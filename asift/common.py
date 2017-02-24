@@ -162,12 +162,12 @@ def clock():
 
 @contextmanager
 def Timer(msg):
-    print(msg, '...', )
+    print("{}... ".format(msg))
     start = clock()
     try:
         yield
     finally:
-        print("%.2f ms" % ((clock() - start) * 1000))
+        print("{}... {:.2f} ms".format(msg, (clock() - start) * 1000))
 
 
 class StatValue:

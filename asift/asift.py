@@ -23,6 +23,7 @@ USAGE
 from __future__ import print_function
 
 import itertools as it
+from collections import namedtuple
 from multiprocessing.pool import ThreadPool
 
 import cv2
@@ -66,7 +67,10 @@ def affine_skew(tilt, phi, img):
     return img, mask, Ai
 
 
-def affine_detect(detector, img, pool=None):
+Detection = namedtuple("Detection", ["key_points", "descriptors", "parameters"])
+
+
+def affine_detect(detector, img, min_features=2, pool=None) -> [Detection]:
     """
     affine_detect(detector, img, mask=None, pool=None) -> keypoints, descrs
 
@@ -106,21 +110,23 @@ def affine_detect(detector, img, pool=None):
         if descrs is None:
             descrs = []
         dtother += clock() - T
-        return keypoints, descrs
+        return keypoints, descrs, p
 
-    keypoints, descrs = [], []
     if pool is None:
         ires = map(f, params)
     else:
         ires = pool.map(f, params)
 
-    for i, (k, d) in enumerate(ires):
-        #print('affine sampling: %d / %d\r' % (i + 1, len(params)))
-        keypoints.extend(k)
-        descrs.extend(d)
+    result = []
+    for i, (k, d, p) in enumerate(ires):
+        # filter out images with too few detected features
+        if len(k) < min_features:
+            continue
 
-    print(dtskew, dtcompute, dtother)
-    return keypoints, np.array(descrs)
+        result.append(Detection(k, np.array(d), p))
+
+    # print(dtskew, dtcompute, dtother)
+    return result
 
 
 if __name__ == '__main__':
