@@ -22,7 +22,6 @@ USAGE
 # Python 2/3 compatibility
 from __future__ import print_function
 
-import itertools as it
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
 
@@ -70,7 +69,16 @@ def affine_skew(tilt, phi, img):
 Detection = namedtuple("Detection", ["key_points", "descriptors", "parameters"])
 
 
-def affine_detect(detector, img, min_features=2, pool=None) -> [Detection]:
+def get_camera_params():
+    params = [(1.0, 0.0)]
+    for t in 2 ** (0.5 * np.arange(1, 6)):
+        for phi in np.arange(0, 180, 72.0 / t):
+            params.append((t, phi))
+
+    return params
+
+
+def affine_detect(detector, img, min_features=2, pool=None, params=get_camera_params()) -> [Detection]:
     """
     affine_detect(detector, img, mask=None, pool=None) -> keypoints, descrs
 
@@ -80,36 +88,18 @@ def affine_detect(detector, img, min_features=2, pool=None) -> [Detection]:
 
     ThreadPool object may be passed to speedup the computation.
     """
-    params = [(1.0, 0.0)]
-    for t in 2 ** (0.5 * np.arange(1, 6)):
-        for phi in np.arange(0, 180, 72.0 / t):
-            params.append((t, phi))
-
-
-    dtskew = 0
-    dtcompute = 0
-    dtother = 0
 
     def f(p):
-        nonlocal dtskew, dtcompute, dtother
-
         t, phi = p
-
-        T = clock()
         timg, tmask, Ai = affine_skew(t, phi, img)
-        dtskew += clock() - T
-
-        T = clock()
         keypoints, descrs = detector.detectAndCompute(timg, tmask)
-        dtcompute += clock() - T
 
-        T = clock()
         for kp in keypoints:
             x, y = kp.pt
             kp.pt = tuple(np.dot(Ai, (x, y, 1)))
         if descrs is None:
             descrs = []
-        dtother += clock() - T
+
         return keypoints, descrs, p
 
     if pool is None:
@@ -125,7 +115,6 @@ def affine_detect(detector, img, min_features=2, pool=None) -> [Detection]:
 
         result.append(Detection(k, np.array(d), p))
 
-    # print(dtskew, dtcompute, dtother)
     return result
 
 

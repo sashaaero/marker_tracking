@@ -263,3 +263,19 @@ def draw_keypoints(vis, keypoints, color=(0, 255, 255)):
     for kp in keypoints:
         x, y = kp.pt
         cv2.circle(vis, (int(x), int(y)), 2, color)
+
+
+def get_by_sorted_indices(source_idx, arr):
+    """
+    :param source_idx: source index
+    :param arr: source array
+    :return: array elements, sorted by index manhattan distance to the source index
+    """
+
+    l1, l2 = np.shape(arr)
+
+    indices = list(it.product(range(0, l1), range(0, l2)))
+    indices.sort(key=lambda p: abs(p[0] - source_idx[0]) + abs(p[1] - source_idx[1]))
+
+    for i in indices:
+        yield arr[i[0]][i[1]]
