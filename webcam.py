@@ -66,6 +66,9 @@ def detect_copy(cam, orig):
             detection2 = affine_detect(detector, dev, pool=pool)
             # print('img1 - %d features, img2 - %d features' % (len(kp1), len(kp2)))
 
+        knn_timer = Timer("knn", False)
+        filter_timer = Timer("filter", False)
+
         with Timer('matching'):
             detection2.sort(key=lambda d: (d.parameters[0] - previous_match.parameters[0],
                                            d.parameters[1] - previous_match.parameters[1]))
@@ -74,9 +77,11 @@ def detect_copy(cam, orig):
             best_H = None
             best_params = (0, 0)
             for i, (d1, d2) in enumerate(product(detection1, detection2)):
-                raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
+                with knn_timer:
+                    raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
 
-                p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.5)
+                with filter_timer:
+                    p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.5)
 
                 match = len(kp_pairs) * 100.0 / len(raw_matches)
 
@@ -98,7 +103,8 @@ def detect_copy(cam, orig):
             if best_H is not None:
                 draw_match_bounds(np.shape(orig), img, best_H)
 
-
+        print(" knn:    {} ms".format(knn_timer))
+        print(" filter: {} ms".format(filter_timer))
 
         # cv2.imshow('my webcam', img0)
         cv2.imshow('my dev', dev)

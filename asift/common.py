@@ -160,14 +160,31 @@ def clock():
     return cv2.getTickCount() / cv2.getTickFrequency()
 
 
-@contextmanager
-def Timer(msg):
-    print("{}... ".format(msg))
-    start = clock()
-    try:
-        yield
-    finally:
-        print("{}... {:.2f} ms".format(msg, (clock() - start) * 1000))
+class Timer:
+    name = ""
+    total = None
+
+    _start = 0
+    _auto_print = True
+
+    def __init__(self, name, auto_print=True):
+        self.name = name
+        self._auto_print = auto_print
+
+    def __enter__(self):
+        self._start = clock()
+        if self.total is None:
+            self.total = 0
+            if self._auto_print:
+                print("{}... ".format(self.name))
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.total += clock() - self._start
+        if self._auto_print:
+            print("{}... {} ms".format(self.name, self))
+
+    def __str__(self):
+        return "{:.2f}".format(self.total * 1000)
 
 
 class StatValue:
