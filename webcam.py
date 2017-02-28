@@ -34,6 +34,7 @@ def capture_img(cam):
         if cv2.waitKey(1) == 13:
             return img
 
+
 Match = namedtuple("match", ["match", "parameters"])
 
 
@@ -116,11 +117,106 @@ def detect_copy(cam, orig):
     cv2.destroyAllWindows()
 
 
+# params for ShiTomasi corner detection
+feature_params = dict(maxCorners=100,
+                      qualityLevel=0.3,
+                      minDistance=7,
+                      blockSize=7)
+
+# Parameters for lucas kanade optical flow
+lk_params = dict(winSize=(15, 15),
+                 maxLevel=2,
+                 criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+
+def detect_copy_klt(cam, orig):
+    pool = ThreadPool(processes=cv2.getNumberOfCPUs())
+
+    def draw_keypoints(img, keypoints, color=(0, 255, 255)):
+        for kp in keypoints:
+            x, y = kp
+            cv2.circle(img, (int(x), int(y)), 2, color)
+
+    def refresh_keypoints(detection1, frame):
+        detection2 = affine_detect(detector, frame, pool=pool)
+
+        for i, (d1, d2) in enumerate(product(detection1, detection2)):
+            raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
+
+            p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.5)
+
+            if len(p2) >= 4:
+                return np.array(list(map(lambda x: [x], p2)))
+            else:
+                return None
+
+    # ret_val, img0 = cam.read()
+    img0 = orig
+
+    old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+
+    # draw_keypoints(orig, p0[:, 0])
+
+    detector, matcher = init_feature("sift")
+    small_gray = cv2.resize(old_gray, (0, 0), fx=0.5, fy=0.5)
+    detection1 = affine_detect(detector, small_gray, params=[(1.0, 0.0)])
+
+    p0 = np.array(list(map(lambda kp: np.array([[np.float32(kp.pt[0] * 2), np.float32(kp.pt[1] * 2)]]),
+                           detection1[0].key_points)))
+
+    draw_keypoints(img0, p0[:, 0])
+
+    cv2.imshow('original', img0)
+
+    frames_till_refresh = 0
+    while True:
+        ret_val, img0 = cam.read()
+
+        frame_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+
+        if frames_till_refresh >= 60:
+            print("Refreshing")
+            small_frame = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
+            p00 = refresh_keypoints(detection1, small_frame)
+            if p00 is not None:
+                frames_till_refresh = 0
+                p0 = p00
+                print("{} key points".format(len(p0)))
+            else:
+                print("can't find marker!")
+
+            # calculate optical flow
+        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
+
+        if p1 is not None:
+            # Select good points
+            good_new = p1[st == 1]
+            good_old = p0[st == 1]
+
+            draw_keypoints(img0, good_old, color=(255, 0, 0))
+            draw_keypoints(img0, good_new)
+        else:
+            print("no key points found")
+
+        cv2.imshow('my img', img0)
+
+        if cv2.waitKey(1) == 27:
+            break  # esc to quit
+
+        old_gray = frame_gray.copy()
+        p0 = good_new.reshape(-1,1,2)
+        frames_till_refresh += 1
+
+    cv2.destroyAllWindows()
+
+
 def main():
-    cam = cv2.VideoCapture(1)
+    cam = cv2.VideoCapture(0)
 
     orig = capture_img(cam)
-    detect_copy(cam, orig)
+    detect_copy_klt(cam, orig)
+
+    cam.release()
 
 if __name__ == '__main__':
     main()
