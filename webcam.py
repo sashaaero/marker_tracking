@@ -3,7 +3,7 @@ from collections import namedtuple
 import cv2
 import numpy as np
 from asift.asift import affine_detect, Detection
-from asift.find_obj import init_feature, filter_matches
+from asift.find_obj import init_feature, filter_matches, explore_match
 from asift.common import Timer
 from itertools import product
 from multiprocessing.pool import ThreadPool
@@ -30,7 +30,7 @@ def draw_match_bounds(original_shape, img, H):
 def capture_img(cam):
     while True:
         _, img = cam.read()
-        cv2.imshow("Press enter to capture", img)
+        cv2.imshow("Press enter to capture", cv2.flip(img, 1))
         if cv2.waitKey(1) == 13:
             return img
 
@@ -143,12 +143,15 @@ def detect_copy_klt(cam, orig):
         for i, (d1, d2) in enumerate(product(detection1, detection2)):
             raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
 
-            p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.5)
+            p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.75)
 
-            if len(p2) >= 4:
-                return np.array(list(map(lambda x: [x], p2)))
+            if len(kp_pairs) >= 4:
+                return p1, p2
             else:
-                return None
+                return None, None
+
+    def extract_points(kp_pairs, idx):
+        return list(p[idx].pt for p in kp_pairs)
 
     # ret_val, img0 = cam.read()
     img0 = orig
@@ -157,10 +160,14 @@ def detect_copy_klt(cam, orig):
 
     # draw_keypoints(orig, p0[:, 0])
 
-    detector, matcher = init_feature("sift")
-    small_gray = cv2.resize(old_gray, (0, 0), fx=0.5, fy=0.5)
-    detection1 = affine_detect(detector, small_gray, params=[(1.0, 0.0)])
+    detector, matcher = init_feature("surf-flann")
+    # small_gray = cv2.resize(old_gray, (0, 0), fx=0.5, fy=0.5)
+    detection1 = affine_detect(detector, old_gray, pool=pool)
 
+    orig_points = np.array(list(map(lambda p: p.pt, detection1[0].key_points)))
+    print(orig_points)
+
+    # without rotation
     p0 = np.array(list(map(lambda kp: np.array([[np.float32(kp.pt[0] * 2), np.float32(kp.pt[1] * 2)]]),
                            detection1[0].key_points)))
 
@@ -169,6 +176,7 @@ def detect_copy_klt(cam, orig):
     cv2.imshow('original', img0)
 
     frames_till_refresh = 0
+    matches = 0
     while True:
         ret_val, img0 = cam.read()
 
@@ -176,12 +184,25 @@ def detect_copy_klt(cam, orig):
 
         if frames_till_refresh >= 60:
             print("Refreshing")
-            small_frame = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
-            p00 = refresh_keypoints(detection1, small_frame)
+            p1, p2 = refresh_keypoints(detection1, frame_gray)
+
+            H, status = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
+
+            print('%d / %d  inliers/matched' % (np.sum(status), len(status)))
+            # omit outliers (there will be a lot of them)
+
+            p2 = np.array(list(map(lambda x: [x], p2)))
+
+            p00 = np.array([p2[idx] for idx, (kpp, flag) in enumerate(zip(p2, status)) if flag])
+
             if p00 is not None:
                 frames_till_refresh = 0
                 p0 = p00
-                print("{} key points".format(len(p0)))
+
+                # explore_match("match exploration window", cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY), frame_gray, kp_pairs)
+                # cv2.waitKey(0)
+
+                cv2.destroyWindow("match exploration window")
             else:
                 print("can't find marker!")
 
@@ -197,14 +218,15 @@ def detect_copy_klt(cam, orig):
             draw_keypoints(img0, good_new)
         else:
             print("no key points found")
+            frames_till_refresh = 60
 
-        cv2.imshow('my img', img0)
+        cv2.imshow('my img', cv2.flip(img0, 1))
 
         if cv2.waitKey(1) == 27:
             break  # esc to quit
 
         old_gray = frame_gray.copy()
-        p0 = good_new.reshape(-1,1,2)
+        p0 = good_new.reshape(-1, 1, 2)
         frames_till_refresh += 1
 
     cv2.destroyAllWindows()
