@@ -18,6 +18,7 @@ def draw_match_bounds(original_shape, img, H):
         cv2.line(img, tuple(p1), tuple(p2), color)
 
     h, w = original_shape[:2]
+    print(h, w)
     if H is not None:
         corners = np.float32([[1, 1], [w, 1], [w, h], [1, h]])
         corners = np.int32(cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2))
@@ -140,15 +141,18 @@ def detect_copy_klt(cam, orig):
     def refresh_keypoints(detection1, frame):
         detection2 = affine_detect(detector, frame, pool=pool)
 
+        best = 0
+        rslt = None, None
         for i, (d1, d2) in enumerate(product(detection1, detection2)):
             raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
 
             p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.75)
 
-            if len(kp_pairs) >= 4:
-                return p1, p2
-            else:
-                return None, None
+            if len(kp_pairs) >= best:
+                rslt = p1, p2
+                best = len(kp_pairs)
+
+        return rslt
 
     def extract_points(kp_pairs, idx):
         return list(p[idx].pt for p in kp_pairs)
@@ -158,18 +162,13 @@ def detect_copy_klt(cam, orig):
 
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
-    # draw_keypoints(orig, p0[:, 0])
+    detector, matcher = init_feature("orb-flann")
+    detection0 = affine_detect(detector, old_gray, params=[(1.0, 0.0)])
 
-    detector, matcher = init_feature("surf-flann")
-    # small_gray = cv2.resize(old_gray, (0, 0), fx=0.5, fy=0.5)
-    detection1 = affine_detect(detector, old_gray, pool=pool)
-
-    orig_points = np.array(list(map(lambda p: p.pt, detection1[0].key_points)))
-    print(orig_points)
-
-    # without rotation
-    p0 = np.array(list(map(lambda kp: np.array([[np.float32(kp.pt[0] * 2), np.float32(kp.pt[1] * 2)]]),
-                           detection1[0].key_points)))
+    p0 = np.array(list(map(
+        lambda kp: np.array([[np.float32(kp.pt[0]), np.float32(kp.pt[1])]]),
+        detection0[0].key_points
+    )))
 
     draw_keypoints(img0, p0[:, 0])
 
@@ -184,31 +183,35 @@ def detect_copy_klt(cam, orig):
 
         if frames_till_refresh >= 60:
             print("Refreshing")
-            p1, p2 = refresh_keypoints(detection1, frame_gray)
+            p1, p2 = refresh_keypoints(detection0, frame_gray)
 
             H, status = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
 
             print('%d / %d  inliers/matched' % (np.sum(status), len(status)))
-            # omit outliers (there will be a lot of them)
 
             p2 = np.array(list(map(lambda x: [x], p2)))
 
-            p00 = np.array([p2[idx] for idx, (kpp, flag) in enumerate(zip(p2, status)) if flag])
+            # omit outliers (there will be a lot of them)
+            # p00 = np.array([p2[idx] for idx, (kpp, flag) in enumerate(zip(p2, status)) if flag])
 
-            if p00 is not None:
+            if H is not None and np.sum(status) > 0:
                 frames_till_refresh = 0
-                p0 = p00
 
-                # explore_match("match exploration window", cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY), frame_gray, kp_pairs)
+                #draw_match_bounds(orig, img0, H)
+
+                # img1 = img0.copy()
+                # draw_keypoints(img1, p0[:, 0])
+
+                # cv2.imshow("updated", img1)
                 # cv2.waitKey(0)
-
-                cv2.destroyWindow("match exploration window")
+                # p0 = p00
+                p0 = p2
             else:
                 print("can't find marker!")
 
-            # calculate optical flow
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
 
+        good_new = []
         if p1 is not None:
             # Select good points
             good_new = p1[st == 1]
