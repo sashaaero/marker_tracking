@@ -111,12 +111,12 @@ def detect_copy_klt(cam, orig):
     detector, matcher = init_feature("sift")
     detection0 = affine_detect(detector, old_gray)
 
-    orig_points = np.array(list(map(
-        lambda kp: np.array([[np.float32(kp.pt[0]), np.float32(kp.pt[1])]]),
+    orig_points = list(map(
+        lambda kp: (kp.pt[0], kp.pt[1]),
         detection0[0].key_points
-    )))
+    ))
 
-    draw_points(img0, orig_points[:, 0])
+    draw_points(img0, orig_points)
     cv2.imshow('original', img0)
 
     old_points = None
@@ -147,32 +147,14 @@ def detect_copy_klt(cam, orig):
                 new_points = []
                 print("No good features found")
 
-        if new_points is None or len(new_points) == 0:
-            new_points = []
 
+        if new_points is not None and len(new_points) > 0:
+            H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
 
-        H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
+            new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
 
+            draw_match_bounds(orig.shape, img0, H)
 
-        new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
-
-
-        # print('%d / %d  inliers/matched' % (np.sum(status), len(status)))
-
-        draw_match_bounds(orig.shape, img0, H)
-
-        #     frames_till_refresh = 0
-        #
-        #     img1 = img0.copy()
-        #     draw_points(img1, old_points)
-        #
-        #     cv2.imshow("updated", img1)
-        # else:
-        #     print("can't find marker!")
-
-
-    # draw
-        if len(new_points) > 0:
             draw_points(img0, new_points, color=(255, 0, 255))
             draw_points(img0, [mean(new_points)], color=(0, 255, 0))
 
