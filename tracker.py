@@ -1,47 +1,51 @@
-from collections import namedtuple
-
 import cv2
+import numpy as np
+
+from asift.asift import affine_detect, Detection
+from asift.find_obj import init_feature, filter_matches, explore_match
+from asift.common import Timer
+from collections import namedtuple
+from itertools import product
+from multiprocessing.pool import ThreadPool
 
 
 def keypressed(key):
     return cv2.waitKey(1) == key
 
 
-def init_state(original):
+def init_detection(original, detector):
     pass
 
 
-def track_diff(state, img):
+def track_diff(state, img, detector, matcher):
+    good = False
+
+    return good, None
+
+
+def draw_detection(detection):
     pass
 
-
-def draw_state(state):
-    pass
-
-
-State = namedtuple("State", [])
 
 
 def track(cam, original):
     ret_val, img = cam.read()
-    prev_state = init_state(original, img)
+    prev_detection = init_detection(original, img)
 
     while True:
         ret_val, img = cam.read()
 
-        good, state = track_diff(prev_state, img)
+        good, detection = track_diff(prev_detection, img)
 
         if not good:
-            print("Calculating new state")
-            state = init_state(original, img)
+            detection = init_detection(original, img)
 
-
-        draw_state(state, img)
+        draw_detection(detection, img)
 
         if keypressed(27):
             break
 
-        prev_state = state
+        prev_state = detection
 
 
 def get_original(cam):
