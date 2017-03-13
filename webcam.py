@@ -37,9 +37,15 @@ def draw_match_bounds(original_shape, img, H):
         line(corners[3], corners[0], (0, 255, 0))
 
 
-def capture_img(cam):
+def capture_img(cam, size=(640, 480)):
+    _, img = cam.read()
+    return cv2.resize(img, size)
+
+
+def capture_orig(cam):
     while True:
-        _, img = cam.read()
+        img = capture_img(cam)
+
         cv2.imshow("Press enter to capture", cv2.flip(img, 1))
         if cv2.waitKey(1) == 13:
             return img
@@ -102,7 +108,7 @@ def detect_copy_klt(cam, orig):
 
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
-    detector, matcher = init_feature("sift-flann")
+    detector, matcher = init_feature("sift")
     detection0 = affine_detect(detector, old_gray)
 
     orig_points = np.array(list(map(
@@ -116,7 +122,7 @@ def detect_copy_klt(cam, orig):
     old_points = None
     frames_till_refresh = 0
     while True:
-        ret_val, img0 = cam.read()
+        img0 = capture_img(cam)
 
         frame_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
@@ -141,13 +147,15 @@ def detect_copy_klt(cam, orig):
                 new_points = []
                 print("No good features found")
 
-        for i, p in enumerate(new_points):
+        if new_points is None or len(new_points) == 0:
+            new_points = []
 
 
         H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
 
-        new_points = new_points[status > 0]
-        print(new_points)
+
+        new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
+
 
         # print('%d / %d  inliers/matched' % (np.sum(status), len(status)))
 
@@ -182,9 +190,12 @@ def detect_copy_klt(cam, orig):
 
 
 def main():
+    cv2.ocl.setUseOpenCL(True)
+
+
     cam = cv2.VideoCapture(0)
 
-    orig = capture_img(cam)
+    orig = capture_orig(cam)
     detect_copy_klt(cam, orig)
 
     cam.release()
