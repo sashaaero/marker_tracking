@@ -22,7 +22,7 @@ def draw_points(img, points, color=(0, 255, 255)):
         cv2.circle(img, (x, y), 4, color)
 
 
-def draw_match_bounds(original_shape, img, H):
+def draw_match_bounds(original_shape, img, H, color_top=(0, 0, 255), color_other=(0, 255, 0)):
     def line(p1, p2, color):
         cv2.line(img, tuple(p1), tuple(p2), color)
 
@@ -31,10 +31,10 @@ def draw_match_bounds(original_shape, img, H):
     if H is not None:
         corners = np.float32([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]])
         corners = np.int32(cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2))
-        line(corners[0], corners[1], (0, 0, 255))  # red top
-        line(corners[1], corners[2], (0, 255, 0))
-        line(corners[2], corners[3], (0, 255, 0))
-        line(corners[3], corners[0], (0, 255, 0))
+        line(corners[0], corners[1], color_top)  # red top
+        line(corners[1], corners[2], color_other)
+        line(corners[2], corners[3], color_other)
+        line(corners[3], corners[0], color_other)
 
 
 def capture_img(cam, size=(640, 480)):
@@ -110,7 +110,7 @@ def detect_copy_klt(cam, orig):
 
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
-    detector, matcher = init_feature("sift")
+    detector, matcher = init_feature("surf")
     detection0 = affine_detect(detector, old_gray)
 
     orig_points = np.array(list(map(
@@ -124,6 +124,7 @@ def detect_copy_klt(cam, orig):
     old_points = None
     frames_till_refresh = 0
     H = None
+    H2 = None
     while True:
         img0 = capture_img(cam)
 
@@ -155,6 +156,8 @@ def detect_copy_klt(cam, orig):
 
             H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
 
+            H2 = H
+
             # wait_for_key(13)
             if H is not None:
                 frames_till_refresh = REFRESH_INTERVAL
@@ -168,6 +171,10 @@ def detect_copy_klt(cam, orig):
             if H1 is not None:
                  H = H1 #H1.dot(H)
                  new_points = cv2.perspectiveTransform(refresh_points.reshape(1, -1, 2), H).reshape(-1, 2)
+
+            H3, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
+            if H3 is not None:
+                H2 = H3.dot(H2)
 
             if new_points is not None:
                 # new_points = new_points[st == 1]
@@ -185,6 +192,9 @@ def detect_copy_klt(cam, orig):
         #     new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
 
         draw_match_bounds(orig.shape, img0, H)
+
+        # cumulative homography matrix
+        draw_match_bounds(orig.shape, img0, H2, color_top=(0, 255, 255), color_other=(255, 0, 255))
 
         if len(new_points) > 0:
             draw_points(img0, new_points, color=(255, 0, 255))
