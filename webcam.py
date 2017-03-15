@@ -69,9 +69,11 @@ feature_params = dict(maxCorners=100,
                       blockSize=7)
 
 # Parameters for lucas kanade optical flow
-lk_params = dict(winSize=(15, 15),
+lk_params = dict(winSize=(15, 10),
                  maxLevel=2,
-                 criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+                 criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 15, 0.03))
+
+REFRESH_INTERVAL = 30
 
 
 def detect_copy_klt(cam, orig):
@@ -116,29 +118,56 @@ def detect_copy_klt(cam, orig):
         detection0[0].key_points
     )))
 
-    draw_points(img0, orig_points[:, 0])
-    cv2.imshow('original', img0)
+    # draw_points(img0, orig_points[:, 0])
+    # cv2.imshow('original', img0)
 
     old_points = None
     frames_till_refresh = 0
+    H = None
     while True:
         img0 = capture_img(cam)
 
         frame_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+        print(frames_till_refresh)
+
+        # hsv = np.zeros_like(img0)
+        # hsv[..., 1] = 255
+        #
+        # with Timer("flow"):
+        #     flow = cv2.calcOpticalFlowFarneback(old_gray, frame_gray, None, .5, 1, 3, 5, 5, 1.1, 0)
+        #
+        # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        # hsv[...,0] = ang * 180 / np.pi / 2
+        # hsv[...,2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+        # bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        # cv2.imshow('frame2', bgr)
+        # wait_for_key(13)
 
         if frames_till_refresh <= 0:
-            print("Refreshing")
-            old_points, new_points = refresh_keypoints(detection0, frame_gray)
+            with Timer("Refreshing"):
+                old_points, new_points = refresh_keypoints(detection0, frame_gray)
+
+            refresh_points = old_points.copy()
 
             img1 = img0.copy()
             draw_points(img1, new_points)
             cv2.imshow("update", img1)
 
-            # wait_for_key(13)
+            H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
 
-            frames_till_refresh = 60
+            # wait_for_key(13)
+            if H is not None:
+                frames_till_refresh = REFRESH_INTERVAL
+            else:
+                print("can't find homography")
         else:
             new_points, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, old_points, None, **lk_params)
+
+            H1, status = cv2.findHomography(refresh_points, new_points, cv2.RANSAC, 5.0)
+
+            if H1 is not None:
+                 H = H1 #H1.dot(H)
+                 new_points = cv2.perspectiveTransform(refresh_points.reshape(1, -1, 2), H).reshape(-1, 2)
 
             if new_points is not None:
                 # new_points = new_points[st == 1]
@@ -146,37 +175,24 @@ def detect_copy_klt(cam, orig):
             else:
                 new_points = []
                 print("No good features found")
+                frames_till_refresh = 0
 
         if new_points is None or len(new_points) == 0:
-            new_points = []
+            new_points = [[]]
 
 
-        H, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
-
-
-        new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
-
-
-        # print('%d / %d  inliers/matched' % (np.sum(status), len(status)))
+        # else:
+        #     new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
 
         draw_match_bounds(orig.shape, img0, H)
 
-        #     frames_till_refresh = 0
-        #
-        #     img1 = img0.copy()
-        #     draw_points(img1, old_points)
-        #
-        #     cv2.imshow("updated", img1)
-        # else:
-        #     print("can't find marker!")
-
-
-    # draw
         if len(new_points) > 0:
             draw_points(img0, new_points, color=(255, 0, 255))
             draw_points(img0, [mean(new_points)], color=(0, 255, 0))
 
         cv2.imshow('my img', cv2.flip(img0, 1))
+
+        wait_for_key(ord('z'))
 
         if key_pressed(27):
             break  # esc to quit
@@ -192,13 +208,15 @@ def detect_copy_klt(cam, orig):
 def main():
     cv2.ocl.setUseOpenCL(True)
 
+    # cam = cv2.VideoCapture(0)
+    # orig = capture_orig(cam)
 
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture("test.avi")
+    orig = cv2.imread("gaga.jpg")
 
-    orig = capture_orig(cam)
     detect_copy_klt(cam, orig)
 
-    cam.release()
+    # cam.release()
 
 if __name__ == '__main__':
     main()
