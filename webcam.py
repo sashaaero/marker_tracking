@@ -73,7 +73,7 @@ lk_params = dict(winSize=(15, 10),
                  maxLevel=2,
                  criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 15, 0.03))
 
-REFRESH_INTERVAL = 30
+REFRESH_INTERVAL = 90
 
 
 def detect_copy_klt(cam, orig):
@@ -110,7 +110,7 @@ def detect_copy_klt(cam, orig):
 
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
-    detector, matcher = init_feature("surf")
+    detector, matcher = init_feature("sift")
     detection0 = affine_detect(detector, old_gray)
 
     orig_points = np.array(list(map(
@@ -122,6 +122,8 @@ def detect_copy_klt(cam, orig):
     # cv2.imshow('original', img0)
 
     old_points = None
+    best_points = None
+    bad_points = None
     frames_till_refresh = 0
     H = None
     H2 = None
@@ -129,7 +131,6 @@ def detect_copy_klt(cam, orig):
         img0 = capture_img(cam)
 
         frame_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
-        print(frames_till_refresh)
 
         # hsv = np.zeros_like(img0)
         # hsv[..., 1] = 255
@@ -168,9 +169,20 @@ def detect_copy_klt(cam, orig):
 
             H1, status = cv2.findHomography(refresh_points, new_points, cv2.RANSAC, 5.0)
 
+            if status is not None:
+                # print(status)
+                best_points = np.array([p for i, p in enumerate(new_points) if status[i] > 0])
+                bad_points = np.array([p for i, p in enumerate(new_points) if status[i] == 0])
+                # print("{}={}/{}".format(sum(status), len(best_points), len(status)))
+                # postpone refreshing by one frame
+                if len(best_points) * 2 > len(new_points):
+                    frames_till_refresh += 1
+                    print("+1")
+            else:
+                best_points = []
             if H1 is not None:
-                 H = H1 #H1.dot(H)
-                 new_points = cv2.perspectiveTransform(refresh_points.reshape(1, -1, 2), H).reshape(-1, 2)
+                H = H1 #H1.dot(H)
+                new_points = cv2.perspectiveTransform(refresh_points.reshape(1, -1, 2), H).reshape(-1, 2)
 
             H3, status = cv2.findHomography(old_points, new_points, cv2.RANSAC, 5.0)
             if H3 is not None:
@@ -198,11 +210,17 @@ def detect_copy_klt(cam, orig):
 
         if len(new_points) > 0:
             draw_points(img0, new_points, color=(255, 0, 255))
+            if best_points is not None:
+                draw_points(img0, best_points, color=(255, 255, 255))
+
+            if bad_points is not None:
+                draw_points(img0, bad_points, color=(0, 0, 255))
+
             draw_points(img0, [mean(new_points)], color=(0, 255, 0))
 
         cv2.imshow('my img', cv2.flip(img0, 1))
 
-        wait_for_key(ord('z'))
+        # wait_for_key(ord('z'))
 
         if key_pressed(27):
             break  # esc to quit
@@ -218,15 +236,16 @@ def detect_copy_klt(cam, orig):
 def main():
     cv2.ocl.setUseOpenCL(True)
 
-    # cam = cv2.VideoCapture(0)
-    # orig = capture_orig(cam)
+    cam = cv2.VideoCapture(0)
+    orig = capture_orig(cam)
 
-    cam = cv2.VideoCapture("test.avi")
-    orig = cv2.imread("gaga.jpg")
+    # cam = cv2.VideoCapture("test.avi")
+
+    orig = cv2.imread("sample_gaga.jpg")
 
     detect_copy_klt(cam, orig)
 
-    # cam.release()
+    cam.release()
 
 if __name__ == '__main__':
     main()
