@@ -75,28 +75,30 @@ lk_params = dict(winSize=(15, 10),
 
 REFRESH_INTERVAL = 90
 
+IMG_SIZE = (320, 240)
+
 
 def detect_copy_klt(cam, orig):
     pool = ThreadPool(processes=cv2.getNumberOfCPUs())
 
-    def refresh_keypoints(detection1, frame):
-        detection2 = affine_detect(detector, frame, pool=pool)
+    def refresh_keypoints(detections_orig, frame):
+        with Timer("detection"):
+            detections_frame = affine_detect(detector, frame, pool=pool)
 
-        best = 0
-        rslt = None, None
-        for i, (d1, d2) in enumerate(product(detection1, detection2)):
-            raw_matches = matcher.knnMatch(d1.descriptors, trainDescriptors=d2.descriptors, k=2)  # 2
+        with Timer("matching"):
+            best = 0
+            rslt = None, None
+            for i, (d_o, d_f) in enumerate(product(detections_orig, detections_frame)):
 
-            p1, p2, kp_pairs = filter_matches(d1.key_points, d2.key_points, raw_matches, ratio=0.75)
+                raw_matches = matcher.knnMatch(d_o.descriptors, trainDescriptors=d_f.descriptors, k=2)  # 2
 
-            if len(kp_pairs) >= best:
-                rslt = p1, p2
-                best = len(kp_pairs)
+                p1, p2, kp_pairs = filter_matches(d_o.key_points, d_f.key_points, raw_matches, ratio=0.75)
+
+                if len(kp_pairs) >= best:
+                    rslt = p1, p2
+                    best = len(kp_pairs)
 
         return rslt
-
-    def extract_points(kp_pairs, idx):
-        return list(p[idx].pt for p in kp_pairs)
 
     def mean(pts):
         m = (0, 0)
@@ -109,17 +111,11 @@ def detect_copy_klt(cam, orig):
     img0 = orig.copy()
 
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+    old_gray = cv2.resize(old_gray, IMG_SIZE)
 
-    detector, matcher = init_feature("sift")
-    detection0 = affine_detect(detector, old_gray)
-
-    orig_points = np.array(list(map(
-        lambda kp: np.array([[np.float32(kp.pt[0]), np.float32(kp.pt[1])]]),
-        detection0[0].key_points
-    )))
-
-    # draw_points(img0, orig_points[:, 0])
-    # cv2.imshow('original', img0)
+    detector, matcher = init_feature("surf")
+    with Timer("detect original"):
+        detections_orig = affine_detect(detector, old_gray) #, params=[(1.0, 0.0)])
 
     old_points = None
     best_points = None
@@ -128,7 +124,7 @@ def detect_copy_klt(cam, orig):
     H = None
     H2 = None
     while True:
-        img0 = capture_img(cam)
+        img0 = capture_img(cam, size=IMG_SIZE)
 
         frame_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
 
@@ -147,7 +143,7 @@ def detect_copy_klt(cam, orig):
 
         if frames_till_refresh <= 0:
             with Timer("Refreshing"):
-                old_points, new_points = refresh_keypoints(detection0, frame_gray)
+                old_points, new_points = refresh_keypoints(detections_orig, frame_gray)
 
             refresh_points = old_points.copy()
 
@@ -175,9 +171,9 @@ def detect_copy_klt(cam, orig):
                 bad_points = np.array([p for i, p in enumerate(new_points) if status[i] == 0])
                 # print("{}={}/{}".format(sum(status), len(best_points), len(status)))
                 # postpone refreshing by one frame
-                if len(best_points) * 2 > len(new_points):
-                    frames_till_refresh += 1
-                    print("+1")
+                # if len(best_points) > len(new_points) * .8 and len(new_points) > 5:
+                #     frames_till_refresh += 1
+                #     print("+1", len(best_points), len(new_points))
             else:
                 best_points = []
             if H1 is not None:
@@ -234,14 +230,14 @@ def detect_copy_klt(cam, orig):
 
 
 def main():
-    cv2.ocl.setUseOpenCL(True)
+    # cv2.ocl.setUseOpenCL(False)
 
-    cam = cv2.VideoCapture(0)
-    orig = capture_orig(cam)
+    # cam = cv2.VideoCapture(0)
+    # orig = capture_orig(cam)
 
-    # cam = cv2.VideoCapture("test.avi")
+    cam = cv2.VideoCapture("test.avi")
 
-    orig = cv2.imread("sample_gaga.jpg")
+    orig = cv2.imread("sample.jpg")
 
     detect_copy_klt(cam, orig)
 

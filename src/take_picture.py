@@ -9,7 +9,7 @@ while(cap.isOpened()):
 
         cv2.imshow('frame',frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            cv2.imwrite("sample_gaga.jpg", frame)
+            cv2.imwrite("sample.jpg", frame)
             break
     else:
         break
