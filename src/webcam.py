@@ -113,7 +113,7 @@ def detect_copy_klt(cam, orig):
     old_gray = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
     old_gray = cv2.resize(old_gray, IMG_SIZE)
 
-    detector, matcher = init_feature("surf")
+    detector, matcher = init_feature("brisk")
     with Timer("detect original"):
         detections_orig = affine_detect(detector, old_gray) #, params=[(1.0, 0.0)])
 
@@ -199,10 +199,10 @@ def detect_copy_klt(cam, orig):
         # else:
         #     new_points = np.array([p for i, p in enumerate(new_points) if status[i]])
 
-        draw_match_bounds(orig.shape, img0, H)
+        draw_match_bounds(img0.shape, img0, H)
 
         # cumulative homography matrix
-        draw_match_bounds(orig.shape, img0, H2, color_top=(0, 255, 255), color_other=(255, 0, 255))
+        draw_match_bounds(img0.shape, img0, H2, color_top=(0, 255, 255), color_other=(255, 0, 255))
 
         if len(new_points) > 0:
             draw_points(img0, new_points, color=(255, 0, 255))
@@ -235,9 +235,9 @@ def main():
     # cam = cv2.VideoCapture(0)
     # orig = capture_orig(cam)
 
-    cam = cv2.VideoCapture("test.avi")
+    cam = cv2.VideoCapture("../test.avi")
 
-    orig = cv2.imread("sample.jpg")
+    orig = cv2.imread("../sample.jpg")
 
     detect_copy_klt(cam, orig)
 
