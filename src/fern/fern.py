@@ -3,16 +3,17 @@ from collections import defaultdict
 
 import cv2
 import numpy as np
+import time
 
 from asift.asift import affine_skew, get_camera_params
 from asift.common import Timer, iter_timer
-from webcam import wait_for_key, draw_match_bounds
+from webcam import wait_for_key, draw_match_bounds, key_pressed
 
 #
 # Article: OZUYSAL ET AL.: FAST KEYPOINT RECOGNITION USING RANDOM FERNS
 # Link: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=4760148
 #
-Z = 400
+Z = 100
 
 class Fern:
     def __init__(self, size, key_point_pairs, feature_function):
@@ -240,41 +241,51 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
 
 
 if __name__ == "__main__":
-    orig = cv2.imread("../../sample_gaga.jpg")
+    orig = cv2.imread("../../sample.jpg")
     orig2 = cv2.flip(orig, 1)
 
     detector = FernDetector(orig)
 
     # kp1, kp2, kp_p = detector.match(orig)
-
+    #
     # img = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
     # explore_match("sfs", img, img, kp_p)
+    #
+    # H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+    #
+    # if H is not None:
+    #     draw_match_bounds(orig.shape, orig, H)
+    #
+    # cv2.imshow("orig", orig)
     #
     # wait_for_key(ord('q'))
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture("../../test.avi")
+    cam = cv2.VideoCapture(0) #"../../test.avi")
     while True:
         retval, img = cam.read()
 
         with Timer("matching"):
             kp1, kp2, kp_p = detector.match(img)
 
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # explore_match("sfs", orig, img, kp_p)
         # wait_for_key(13)
 
-        H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+        with Timer("homography"):
+            H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+
+        explore_match("sfs", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
 
         if H is not None:
             draw_match_bounds(img.shape, img, H)
         else:
             print("None :(")
 
-        cv2.imshow("zzz", img)
-        wait_for_key(13)
 
+        # cv2.imshow("eee", img)
+
+        if key_pressed(27):
+            break  # esc to quit
 
 
 
