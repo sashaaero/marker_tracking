@@ -176,11 +176,34 @@ class FernDetector:
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
+
+        def get_rot_matrix(angle):
+            c, s = np.cos(angle), np.sin(angle)
+            return np.matrix([[c, -s], [s, c]])
+
         patch = self._generate_patch(img, corner)
 
         params = [(1.0, 0.0)]
         t = 1.0
         # for t in 2 ** (0.5 * np.arange(1, 6)):
+
+        for _ in range(100):
+            theta = random.random() * np.pi*2
+            phi = random.random() * np.pi*2
+            lambda1 = 0.6 + random.random() * (1.5 - 0.6)
+            lambda2 = 0.6 + random.random() * (1.5 - 0.6)
+
+            Rt = get_rot_matrix(theta)
+            Rp = get_rot_matrix(phi)
+            Rp1 = get_rot_matrix(-phi)
+
+            Rl = np.matrix([[lambda1, 0], [0, lambda2]])
+
+            R = Rt.dot(Rp1.dot(Rl.dot(Rp)))
+
+            yield cv2.warpAffine(patch, R, dsize=self._patch_size)
+
+
         for phi in np.arange(-90, 90, 12.0 / t):
             params.append((t, phi))
 
@@ -262,7 +285,7 @@ if __name__ == "__main__":
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture(0) #"../../test.avi")
+    cam = cv2.VideoCapture("../../test.avi")
     while True:
         retval, img = cam.read()
 
