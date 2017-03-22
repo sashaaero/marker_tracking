@@ -5,13 +5,14 @@ import cv2
 import numpy as np
 
 from asift.asift import affine_skew, get_camera_params
+from asift.common import Timer, iter_timer
 from webcam import wait_for_key, draw_match_bounds
 
 #
 # Article: OZUYSAL ET AL.: FAST KEYPOINT RECOGNITION USING RANDOM FERNS
 # Link: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=4760148
 #
-Z = 100
+Z = 400
 
 class Fern:
     def __init__(self, size, key_point_pairs, feature_function):
@@ -77,8 +78,8 @@ class FernDetector:
         self._fern_p = np.zeros((len(self._ferns), K, self._classes_count))
         self.key_points = []
 
-        for class_idx, (corner, ) in enumerate(corners):
-            print("Training class {} / {}".format(class_idx + 1, self._classes_count))
+        print("Training {} classes".format(self._classes_count))
+        for class_idx, (corner, ) in enumerate(iter_timer(corners, print_iterations=False)):
             self.key_points.append(corner)
             patch_class = list(self._generate_patch_class(img_gray, corner))
             for patch in patch_class:
@@ -89,21 +90,24 @@ class FernDetector:
                     assert k < K, "WTF!!!"
                     self._fern_p[fern_idx, k, class_idx] += 1
 
-        for fern_idx in range(len(self._ferns)):
+        print("Calculating probabilities")
+        for fern_idx in iter_timer(range(len(self._ferns))):
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, :, cls_idx])
                 for k in range(K):
                     self._fern_p[fern_idx, k, cls_idx] = (self._fern_p[fern_idx, k, cls_idx] + 1) / (Nc + K)
+        print("Training complete!")
 
     def match(self, image):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        corners = cv2.goodFeaturesToTrack(image, maxCorners=500, qualityLevel=0.01, minDistance=16)[:Z]
+        with Timer("track features"):
+            corners = cv2.goodFeaturesToTrack(image, maxCorners=500, qualityLevel=0.01, minDistance=16)[:Z]
 
         key_points_trained = []
         key_points_matched = []
         key_points_pairs = []
 
-        for (corner, ) in corners:
+        for (corner, ) in iter_timer(corners, print_iterations=False):
             probs = np.zeros((self._classes_count, ))
 
             patch = self._generate_patch(image, corner)
@@ -264,7 +268,8 @@ if __name__ == "__main__":
     while True:
         retval, img = cam.read()
 
-        kp1, kp2, kp_p = detector.match(img)
+        with Timer("matching"):
+            kp1, kp2, kp_p = detector.match(img)
 
         # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         # explore_match("sfs", orig, img, kp_p)
@@ -278,7 +283,7 @@ if __name__ == "__main__":
             print("None :(")
 
         cv2.imshow("zzz", img)
-        wait_for_key(13)
+
 
 
 

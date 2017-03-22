@@ -187,6 +187,54 @@ class Timer:
         return "{:.2f}".format(self.total * 1000)
 
 
+def iter_timer(seq, print_iterations=True):
+    """ Measures and prints time of each iteration, """
+    def print_iter(idx, time):
+        print("iteration {:3}, time: {:.3} s".format(idx, time))
+
+    prev_time = None
+    times = []
+    for idx, v in enumerate(seq):
+        cur_time = clock()
+
+        # skip first time
+        if prev_time is not None:
+            if print_iterations:
+                print_iter(idx, cur_time - prev_time)
+
+            times.append(cur_time - prev_time)
+
+        prev_time = cur_time
+        yield v
+
+    # idx of last iteration
+    idx += 1
+
+    cur_time = clock()
+    if print_iterations:
+        print_iter(idx, cur_time - prev_time)
+
+    times.append(cur_time - prev_time)
+    times = np.array(times)
+
+    total_iterations = idx
+    total_time = np.sum(times)
+    avg        = np.mean(times)
+    sd         = np.std(times)
+    median     = np.median(times)
+    M          = np.max(times)
+    m          = np.mean(times)
+
+    print("Performed total of {} iterations, total time = {:.3f} s\n"
+          " min = {:.3f} s\n"
+          " avg = {:.3f} s\n"
+          " med = {:.3f} s\n"
+          " max = {:.3f} s\n"
+          " sd  = {:.3f}"
+          .format(total_iterations, total_time, m, avg, median, M, sd))
+
+    return
+
 class StatValue:
     def __init__(self, smooth_coef=0.5):
         self.value = None
