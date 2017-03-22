@@ -78,24 +78,21 @@ class FernDetector:
         self._fern_p = np.zeros((len(self._ferns), K, self._classes_count))
         self.key_points = []
 
-        print("Training {} classes".format(self._classes_count))
-        for class_idx, (corner, ) in enumerate(iter_timer(corners, print_iterations=False)):
+        title = "Training {} classes".format(self._classes_count)
+        for class_idx, (corner, ) in enumerate(iter_timer(corners, title=title, print_iterations=False)):
             self.key_points.append(corner)
             patch_class = list(self._generate_patch_class(img_gray, corner))
             for patch in patch_class:
-                # print(patch.shape)
                 for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
-                    # print(fern_idx, k, K)
                     assert k < K, "WTF!!!"
                     self._fern_p[fern_idx, k, class_idx] += 1
 
-        print("Calculating probabilities")
-        for fern_idx in iter_timer(range(len(self._ferns))):
+        for fern_idx in iter_timer(range(len(self._ferns)), title="Calculating probs"):
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, :, cls_idx])
-                for k in range(K):
-                    self._fern_p[fern_idx, k, cls_idx] = (self._fern_p[fern_idx, k, cls_idx] + 1) / (Nc + K)
+                self._fern_p[fern_idx, :, cls_idx] += 1
+                self._fern_p[fern_idx, :, cls_idx] /= (Nc + K)
         print("Training complete!")
 
     def match(self, image):
@@ -107,21 +104,15 @@ class FernDetector:
         key_points_matched = []
         key_points_pairs = []
 
-        for (corner, ) in iter_timer(corners, print_iterations=False):
+        for (corner, ) in iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count, ))
 
             patch = self._generate_patch(image, corner)
             for fern_idx, fern in enumerate(self._ferns):
                 k = fern.calculate(patch)
-                for class_idx in range(self._classes_count):
-                    probs[class_idx] += np.log10(self._fern_p[fern_idx, k, class_idx])
+                probs = np.log10(self._fern_p[fern_idx, k, :])
 
-            most_probable_class = 0
-            most_prob = probs[most_probable_class]
-            for class_idx in range(1, self._classes_count):
-                if most_prob < probs[class_idx]:
-                    most_probable_class = class_idx
-                    most_prob = probs[most_probable_class]
+            most_probable_class = np.argmax(probs)
 
             key_points_trained.append(self.key_points[most_probable_class])
             key_points_matched.append(corner)
@@ -199,7 +190,6 @@ class FernDetector:
 
 class FernMatcher:
     pass
-
 
 
 def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
@@ -283,6 +273,7 @@ if __name__ == "__main__":
             print("None :(")
 
         cv2.imshow("zzz", img)
+        wait_for_key(13)
 
 
 

@@ -187,10 +187,15 @@ class Timer:
         return "{:.2f}".format(self.total * 1000)
 
 
-def iter_timer(seq, print_iterations=True):
-    """ Measures and prints time of each iteration, """
+def iter_timer(seq, title=None, print_iterations=True):
+    """ Measures and prints total execution time, time of each iteration and some statistics"""
     def print_iter(idx, time):
         print("iteration {:3}, time: {:.3} s".format(idx, time))
+
+    # empty line, just prettifying the output
+    print()
+    if title is not None:
+        print(title)
 
     prev_time = None
     times = []
