@@ -228,7 +228,7 @@ def iter_timer(seq, title=None, print_iterations=True):
     sd         = np.std(times)
     median     = np.median(times)
     M          = np.max(times)
-    m          = np.mean(times)
+    m          = np.min(times)
 
     print("Performed total of {} iterations, total time = {:.3f} s\n"
           " min = {:.3f} s\n"
