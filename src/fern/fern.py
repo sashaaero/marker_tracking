@@ -183,26 +183,26 @@ class FernDetector:
 
         patch = self._generate_patch(img, corner)
 
-        for _1 in range(30):
-            theta = random.random() * np.pi*2
+        r_theta = np.random.uniform(0, 2 * np.pi, 30)
+        for theta in r_theta:
             Rt = get_rot_matrix(theta)
 
-            for _2 in range(30):
-                phi = random.random() * np.pi*2
-                Rp = get_rot_matrix(phi)
+            r_phi = np.random.uniform(0, 2 * np.pi, 30)
+            for phi in r_phi:
+                Rp  = get_rot_matrix(phi)
                 Rp1 = get_rot_matrix(-phi)
 
-                for _3 in range(6):
-                    lambda1 = 0.6 + random.random() * (1.5 - 0.6)
+                Rtp1 = Rt.dot(Rp1)
 
-                    for _4 in range(6):
-                        lambda2 = 0.6 + random.random() * (1.5 - 0.6)
-                        Rl = np.matrix([[lambda1, 0], [0, lambda2]])
+                r_lambda1 = np.random.uniform(0.6, 1.5, 6)
+                r_lambda2 = np.random.uniform(0.6, 1.5, 6)
+                for lambda1, lambda2 in zip(r_lambda1, r_lambda2):
+                    Rl = np.matrix([[lambda1, 0], [0, lambda2]])
 
-                        R = Rt.dot(Rp1.dot(Rl.dot(Rp)))
-                        R = np.float32(np.hstack([R, [[0], [0]]]))
+                    R = Rtp1.dot(Rl.dot(Rp))
+                    R = np.float32(np.hstack([R, [[0], [0]]]))
 
-                        yield cv2.warpAffine(patch, R, dsize=self._patch_size)
+                    yield cv2.warpAffine(patch, R, dsize=self._patch_size)
 
         # params = [(1.0, 0.0)]
         # t = 1.0
@@ -271,7 +271,7 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None, win_bounds
 
 
 if __name__ == "__main__":
-    orig = cv2.imread("../sample.jpg")
+    orig = cv2.imread("../sample_emc.jpg")
     orig2 = cv2.flip(orig, 1)
 
     detector = FernDetector(orig)
@@ -292,7 +292,7 @@ if __name__ == "__main__":
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture("../test.avi")
+    cam = cv2.VideoCapture(0) #"../test.avi")
     while True:
         retval, img = cam.read()
 
