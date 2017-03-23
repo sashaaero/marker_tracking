@@ -80,7 +80,7 @@ class FernDetector:
         self.key_points = []
 
         title = "Training {} classes".format(self._classes_count)
-        for class_idx, (corner, ) in enumerate(iter_timer(corners, title=title, print_iterations=False)):
+        for class_idx, (corner, ) in enumerate(iter_timer(corners, title=title, print_iterations=True)):
             self.key_points.append(corner)
             patch_class = list(self._generate_patch_class(img_gray, corner))
             for patch in patch_class:
@@ -183,40 +183,42 @@ class FernDetector:
 
         patch = self._generate_patch(img, corner)
 
-        params = [(1.0, 0.0)]
-        t = 1.0
-        # for t in 2 ** (0.5 * np.arange(1, 6)):
-
-        for _ in range(100):
+        for _1 in range(30):
             theta = random.random() * np.pi*2
-            phi = random.random() * np.pi*2
-            lambda1 = 0.6 + random.random() * (1.5 - 0.6)
-            lambda2 = 0.6 + random.random() * (1.5 - 0.6)
-
             Rt = get_rot_matrix(theta)
-            Rp = get_rot_matrix(phi)
-            Rp1 = get_rot_matrix(-phi)
 
-            Rl = np.matrix([[lambda1, 0], [0, lambda2]])
+            for _2 in range(30):
+                phi = random.random() * np.pi*2
+                Rp = get_rot_matrix(phi)
+                Rp1 = get_rot_matrix(-phi)
 
-            R = Rt.dot(Rp1.dot(Rl.dot(Rp)))
+                for _3 in range(6):
+                    lambda1 = 0.6 + random.random() * (1.5 - 0.6)
 
-            yield cv2.warpAffine(patch, R, dsize=self._patch_size)
+                    for _4 in range(6):
+                        lambda2 = 0.6 + random.random() * (1.5 - 0.6)
+                        Rl = np.matrix([[lambda1, 0], [0, lambda2]])
 
+                        R = Rt.dot(Rp1.dot(Rl.dot(Rp)))
+                        R = np.float32(np.hstack([R, [[0], [0]]]))
 
-        for phi in np.arange(-90, 90, 12.0 / t):
-            params.append((t, phi))
+                        yield cv2.warpAffine(patch, R, dsize=self._patch_size)
 
-        for (t, phi) in params:
-            patch1, mask, Ai = affine_skew(t, phi, patch)
-            yield patch1
+        # params = [(1.0, 0.0)]
+        # t = 1.0
+        # for phi in np.arange(-90, 90, 12.0 / t):
+        #     params.append((t, phi))
+        #
+        # for (t, phi) in params:
+        #     patch1, mask, Ai = affine_skew(t, phi, patch)
+        #     yield patch1
 
 
 class FernMatcher:
     pass
 
 
-def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
+def explore_match(win, img1, img2, kp_pairs, status = None, H = None, win_bounds=None):
     h1, w1 = img1.shape[:2]
     h2, w2 = img2.shape[:2]
     vis = np.zeros((max(h1, h2), w1+w2), np.uint8)
@@ -253,10 +255,15 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
             cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
             cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
-    vis0 = vis.copy()
+
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
         if inlier:
             cv2.line(vis, (x1, y1), (x2, y2), green)
+
+    if win_bounds is not None:
+        h, w = vis.shape[:2]
+        k = min(win_bounds[0] / w, win_bounds[1] / h)
+        vis = cv2.resize(vis, (0, 0), fx=k, fy=k)
 
     cv2.imshow(win, vis)
 
@@ -264,7 +271,7 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
 
 
 if __name__ == "__main__":
-    orig = cv2.imread("../../sample.jpg")
+    orig = cv2.imread("../sample.jpg")
     orig2 = cv2.flip(orig, 1)
 
     detector = FernDetector(orig)
@@ -272,7 +279,7 @@ if __name__ == "__main__":
     # kp1, kp2, kp_p = detector.match(orig)
     #
     # img = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
-    # explore_match("sfs", img, img, kp_p)
+    # explore_match("sfs", img, img, kp_p, win_bounds=(1024, 768))
     #
     # H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
     #
@@ -285,7 +292,7 @@ if __name__ == "__main__":
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture("../../test.avi")
+    cam = cv2.VideoCapture("../test.avi")
     while True:
         retval, img = cam.read()
 
@@ -297,15 +304,15 @@ if __name__ == "__main__":
         with Timer("homography"):
             H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
 
-        explore_match("sfs", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
+        explore_match("sfs", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H, win_bounds=(1024, 768))
 
         if H is not None:
             draw_match_bounds(img.shape, img, H)
         else:
             print("None :(")
 
-
-        # cv2.imshow("eee", img)
+        img = cv2.resize(img, (640, 480))
+        cv2.imshow("eee", img)
 
         if key_pressed(27):
             break  # esc to quit
