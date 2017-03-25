@@ -14,7 +14,7 @@ from webcam import wait_for_key, draw_match_bounds, key_pressed
 # Article: OZUYSAL ET AL.: FAST KEYPOINT RECOGNITION USING RANDOM FERNS
 # Link: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=4760148
 #
-Z = 100
+Z = 50
 
 class Fern:
     def __init__(self, size, key_point_pairs, feature_function):
@@ -35,7 +35,7 @@ class Fern:
 
 
 class FernDetector:
-    def __init__(self, img, patch_size=(128, 128)):
+    def __init__(self, img, patch_size=(16, 16)):
         self._patch_size = patch_size
         self._init_ferns()
         self._train(img)
@@ -115,9 +115,14 @@ class FernDetector:
             patch = self._generate_patch(image, corner)
             for fern_idx, fern in enumerate(self._ferns):
                 k = fern.calculate(patch)
-                probs = np.log10(self._fern_p[fern_idx, k, :])
+                probs += np.log10(self._fern_p[fern_idx, k, :])
 
             most_probable_class = np.argmax(probs)
+
+            # print(most_probable_class)
+            # cv2.imshow("patch", patch)
+            # wait_for_key(13)
+
 
             key_points_trained.append(self.key_points[most_probable_class])
             key_points_matched.append(corner)
@@ -189,7 +194,7 @@ class FernDetector:
             c, s = np.cos(angle), np.sin(angle)
             return np.matrix([[c, -s], [s, c]])
 
-        size = self._patch_size[0] * 2, self._patch_size[1] * 2
+        size = self._patch_size[0]*2, self._patch_size[1]*2
         patch = self._generate_patch(img, corner, size)
 
         cx, cy = size
@@ -197,35 +202,37 @@ class FernDetector:
 
         center = np.float32(cx), np.float32(cy)
 
+        ph, pw = self._patch_size
+
         r_theta = np.random.uniform(0, 2 * np.pi, 15)
         for theta in r_theta:
-            Rt = cv2.getRotationMatrix2D(center, theta / np.pi * 180, 1.0)
+            Rt = cv2.getRotationMatrix2D(center, theta * 180 / np.pi, 1.0)
 
-            # add gaussian noise
-            noise = np.uint8(np.random.normal(0, 25, size))
-            warped = cv2.warpAffine(patch, Rt, dsize=size)
-            noised = cv2.addWeighted(warped, 0.9, noise, 0.1, 0)
+            r_phi = np.random.uniform(0, 360, 15)
+            for phi in r_phi:
+                Rp  = cv2.getRotationMatrix2D(center, phi, 1.0)
+                Rp1 = cv2.getRotationMatrix2D(center, - phi, 1.0)
 
-            yield noised[int(cy / 2):int(3 * cy / 2), int(cx / 2):int(3 * cx / 2)]
+                r_lambda1 = np.random.uniform(0.8, 1.2, 2)
+                r_lambda2 = np.random.uniform(0.8, 1.2, 2)
 
-            # r_phi = np.random.uniform(0, 2 * np.pi, 15)
-            # for phi in r_phi:
-            #     Rp  = cv2.getRotationMatrix2D(center, phi / np.pi * 180, 1.0)
-            #     Rp1 = cv2.getRotationMatrix2D(center, - phi / np.pi * 180, 1.0).transpose()
-            #
-            #     r_lambda1 = np.random.uniform(0.99, 1.01, 2)
-            #     r_lambda2 = np.random.uniform(0.99, 1.01, 2)
-            #
-            #     for lambda1, lambda2 in product(r_lambda1, r_lambda2):
-            #         Rl = np.matrix([[lambda1, 0], [0, lambda2]])
-            #
-            #         R = Rt.dot(Rp1.dot(Rl.dot(Rp)))
-            #
-            #         # add gaussian noise
-            #         noise = np.uint8(np.random.normal(0, 25, self._patch_size))
-            #         warped = cv2.warpAffine(patch, R, dsize=self._patch_size)
-            #
-            #         yield cv2.addWeighted(warped, 0.9, noise, 0.1, 0)
+                for lambda1, lambda2 in product(r_lambda1, r_lambda2):
+                    Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
+
+                    warped = cv2.warpAffine(patch, Rp1, dsize=size)
+                    warped = cv2.warpAffine(warped, Rl, dsize=size)
+                    warped = cv2.warpAffine(warped, Rp, dsize=size)
+                    warped = cv2.warpAffine(warped, Rt, dsize=size)
+
+                    # add gaussian noise
+                    noise = np.uint8(np.random.normal(0, 25, (size[1], size[0])))
+                    noised = cv2.addWeighted(warped, .9, noise, .1, 0)
+                    blurred = cv2.GaussianBlur(noised, (3, 3), 2)
+
+                    x0 = int(cx - pw / 2)
+                    y0 = int(cy - ph / 2)
+
+                    yield blurred[y0:y0 + ph, x0:x0 + pw]
 
         # params = [(1.0, 0.0)]
         # t = 1.0
@@ -241,7 +248,7 @@ class FernMatcher:
     pass
 
 
-def explore_match(win, img1, img2, kp_pairs, status = None, H = None, win_bounds=None):
+def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
     h1, w1 = img1.shape[:2]
     h2, w2 = img2.shape[:2]
     vis = np.zeros((max(h1, h2), w1+w2), np.uint8)
@@ -273,7 +280,7 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None, win_bounds
         else:
             col = red
             r = 2
-            thickness = 3
+            thickness = 5
             cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
             cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
@@ -282,11 +289,6 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None, win_bounds
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
         if inlier:
             cv2.line(vis, (x1, y1), (x2, y2), green)
-
-    if win_bounds is not None:
-        h, w = vis.shape[:2]
-        k = min(win_bounds[0] / w, win_bounds[1] / h)
-        vis = cv2.resize(vis, (0, 0), fx=k, fy=k)
 
     cv2.imshow(win, vis)
 
@@ -299,23 +301,23 @@ if __name__ == "__main__":
 
     detector = FernDetector(orig)
 
-    kp1, kp2, kp_p = detector.match(orig)
+    kp1, kp2, kp_p = detector.match(orig2)
 
     img = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
-    explore_match("sfs", img, img, kp_p, win_bounds=(1024, 768))
 
     H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+    explore_match("sfs", img, img, kp_p, status=status, H=H)
 
     if H is not None:
         draw_match_bounds(orig.shape, orig, H)
 
-    cv2.imshow("orig", orig)
+    cv2.imshow("orig", cv2.resize(orig, (1024, 768)))
 
     wait_for_key(ord('q'))
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture(0) #"../test.avi")
+    cam = cv2.VideoCapture("../test.avi")
     while True:
         retval, img = cam.read()
 
@@ -327,7 +329,7 @@ if __name__ == "__main__":
         with Timer("homography"):
             H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
 
-        explore_match("sfs", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H, win_bounds=(1024, 768))
+        explore_match("sfs", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
 
         if H is not None:
             draw_match_bounds(img.shape, img, H)
@@ -339,7 +341,3 @@ if __name__ == "__main__":
 
         if key_pressed(27):
             break  # esc to quit
-
-
-
-    wait_for_key(ord('q'))
