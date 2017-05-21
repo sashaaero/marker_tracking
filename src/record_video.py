@@ -3,7 +3,7 @@ import cv2
 cap = cv2.VideoCapture(0)
 
 # Define the codec and create VideoWriter object
-out = cv2.VideoWriter('test.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640,480))
+out = cv2.VideoWriter('test_ricotta.avi', cv2.VideoWriter_fourcc(*'MJPG'), 20.0, (640,480))
 
 recording = False
 while(cap.isOpened()):
@@ -17,7 +17,7 @@ while(cap.isOpened()):
             print("writing")
             out.write(frame)
 
-        cv2.imshow('frame',frame)
+        cv2.imshow('press ENTER to start recording, q to exit',frame)
 
         key = cv2.waitKey(1)
         if key == 13:

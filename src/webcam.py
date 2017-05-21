@@ -51,11 +51,14 @@ def capture_orig(cam):
             return img
 
 
-def key_pressed(key):
-    return cv2.waitKey(1) == key
+def key_pressed(key=None):
+    if key is None:
+        return cv2.waitKey(1) < 255
+    else:
+        return cv2.waitKey(1) == key
 
 
-def wait_for_key(key):
+def wait_for_key(key=None):
     while not key_pressed(key):
         pass
 
