@@ -1,0 +1,1 @@
+from .fern import FernDetector

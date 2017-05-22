@@ -104,12 +104,15 @@ class FernDetector:
                 self._fern_p[fern_idx, cls_idx, :] += Nr
                 self._fern_p[fern_idx, cls_idx, :] /= (Nc + K * Nr)
 
-                print(max(self._fern_p[fern_idx, cls_idx, :]) - min(self._fern_p[fern_idx, cls_idx, :]))
+                # print(max(self._fern_p[fern_idx, cls_idx, :]) - min(self._fern_p[fern_idx, cls_idx, :]))
 
         print("Training complete!")
 
     def match(self, image):
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        dims = len(np.shape(image))
+        if dims == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
         with Timer("track features"):
             corners = cv2.goodFeaturesToTrack(image, maxCorners=200, qualityLevel=0.01, minDistance=5)
 
@@ -134,6 +137,22 @@ class FernDetector:
             key_points_pairs.append((self.key_points[most_probable_class], corner))
 
         return key_points_trained, key_points_matched, key_points_pairs
+
+    def detect(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        kp_t, kp_m, kpp = self.match(image)
+        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 5.0)
+
+        h, w = np.shape(image)
+
+        corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+
+        if H is not None:
+            return np.int32(cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2))
+
+        return []
+
 
     def _draw_patch_class(self, patches, cls_idx):
         w, h = self._patch_size

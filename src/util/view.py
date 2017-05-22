@@ -2,6 +2,12 @@ import cv2
 import numpy as np
 
 
+COLOR_WHITE = (255, 255, 255)
+COLOR_RED = (0, 0, 255)
+COLOR_GREEN = (0, 255, 0)
+COLOR_BLUE = (255, 0, 0)
+
+
 def capture_img(cam, size=(640, 480)):
     _, img = cam.read()
     return cv2.resize(img, size)
@@ -29,6 +35,6 @@ def wait_for_key(key=None):
         pass
 
 
-def draw_poly(img, corners):
+def draw_poly(img, corners, color=COLOR_WHITE):
     corners = [np.int32(corners)]
-    cv2.polylines(img, corners, True, (255, 255, 255))
+    cv2.polylines(img, corners, True, color)
