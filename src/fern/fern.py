@@ -10,10 +10,6 @@ from functools import reduce
 from itertools import product
 from webcam import wait_for_key, draw_match_bounds, key_pressed
 
-#
-# Article: OZUYSAL ET AL.: FAST KEYPOINT RECOGNITION USING RANDOM FERNS
-# Link: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=4760148
-#
 Z = 20
 
 class Fern:
