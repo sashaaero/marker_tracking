@@ -238,9 +238,9 @@ def main():
     # cam = cv2.VideoCapture(0)
     # orig = capture_orig(cam)
 
-    cam = cv2.VideoCapture("../test.avi")
+    cam = cv2.VideoCapture("samples/test.avi")
 
-    orig = cv2.imread("../sample.jpg")
+    orig = cv2.imread("samples/sample.jpg")
 
     detect_copy_klt(cam, orig)
 

@@ -4,11 +4,10 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-from asift.asift import affine_skew, get_camera_params
 from asift.common import Timer, iter_timer
-from functools import reduce
-from itertools import product
-from webcam import wait_for_key, draw_match_bounds, key_pressed
+
+from util import wait_for_key, key_pressed, explore_match, COLOR_WHITE
+from webcam import draw_match_bounds
 
 Z = 20
 
@@ -42,8 +41,10 @@ class Fern:
 
 
 class FernDetector:
-    def __init__(self, img, patch_size=(32, 32)):
+    def __init__(self, img, patch_size=(16, 16), max_train_corners=20, max_match_corners=200):
         self._patch_size = patch_size
+        self._max_train_corners = max_train_corners
+        self._max_match_corners = max_match_corners
         self._init_ferns()
         self._train(img)
 
@@ -76,7 +77,17 @@ class FernDetector:
     def _train(self, train_img):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
 
-        corners = cv2.goodFeaturesToTrack(img_gray, maxCorners=Z, qualityLevel=0.01, minDistance=16)
+        corners = list(self._get_corners(img_gray, self._max_train_corners))
+        print(corners)
+
+        img1 = img_gray.copy()
+        for corner in corners:
+            x, y = corner
+            cv2.circle(img1, (x, y), 3, COLOR_WHITE, -1)
+
+        cv2.imshow("corners", img1)
+        wait_for_key()
+
         self._classes_count = len(corners)
 
         K = 2**(self._S+1)
@@ -84,7 +95,7 @@ class FernDetector:
         self.key_points = []
 
         title = "Training {} classes".format(self._classes_count)
-        for class_idx, (corner, ) in enumerate(iter_timer(corners, title=title, print_iterations=True)):
+        for class_idx, corner in enumerate(iter_timer(corners, title=title, print_iterations=True)):
             self.key_points.append(corner)
 
             patch_class = list(self._generate_patch_class(img_gray, corner))
@@ -114,13 +125,13 @@ class FernDetector:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         with Timer("track features"):
-            corners = cv2.goodFeaturesToTrack(image, maxCorners=200, qualityLevel=0.01, minDistance=5)
+            corners = self._get_corners(image, self._max_match_corners)
 
         key_points_trained = []
         key_points_matched = []
         key_points_pairs = []
 
-        for (corner, ) in iter_timer(corners, title="Matching corners", print_iterations=False):
+        for corner in iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count, ))
 
             patch = self._generate_patch(image, corner)
@@ -164,7 +175,7 @@ class FernDetector:
             x = (idx // 10) * (w + 5)
             y = (idx % 10) * (h + 5)
 
-            img[y:y + h, x: x + h] = patch
+            img[y:y + h, x: x + w] = patch
 
         cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
 
@@ -181,10 +192,28 @@ class FernDetector:
             yield (x0, y0), (pw - x0 - 1, ph - y0 - 1) #(x1, y1)
 
     def _generate_patch(self, img, center, size=None):
-        x, y = center
-        x, y = int(x), int(y)
         h, w = np.shape(img)
         h, w = int(h), int(w)
+
+        img_left_mirrored = cv2.flip(img, 1)
+        img_top_mirrored = cv2.flip(img, 0)
+        img_lt_mirrored = cv2.flip(img_top_mirrored, 1)
+
+        img_extended = np.zeros((h*3, w*3), np.uint8)
+        img_extended[0:h,     0:w] = img_lt_mirrored
+        img_extended[0:h,     w:w*2] = img_top_mirrored
+        img_extended[0:h,     w*2:w*3] = img_lt_mirrored
+
+        img_extended[h:h*2,   0:w] = img_left_mirrored
+        img_extended[h:h*2,   w:w*2] = img
+        img_extended[h:h*2,   w*2:w*3] = img_left_mirrored
+
+        img_extended[h*2:h*3,  0:w] = img_lt_mirrored
+        img_extended[h*2:h*3,  w:w*2] = img_top_mirrored
+        img_extended[h*2:h*3,  w*2:w*3] = img_lt_mirrored
+
+        x, y = center
+        x, y = int(x) + h, int(y) + w
 
         if size is None:
             pw, ph = self._patch_size
@@ -193,53 +222,41 @@ class FernDetector:
 
         pw2, ph2 = pw // 2, ph // 2
 
-        # top left
-        if x - pw2 < 0:
-            x0 = 0
-        elif x + pw2 >= w:
-            x0 = w - 2 * pw2
-        else:
-            x0 = x - pw2
+        x0 = x - pw2
+        y0 = y - ph2
 
-        if y - ph2 < 0:
-            y0 = 0
-        elif y + ph2 >= h:
-            y0 = h - 2 * ph2
-        else:
-            y0 = y - ph2
-
-        return img[y0:y0 + 2 * ph2, x0:x0 + 2 * pw2]
+        return img_extended[y0:y0 + 2 * ph2, x0:x0 + 2 * pw2]
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
-
+        w, h = np.shape(img)[:2]
         size = self._patch_size[1]*4, self._patch_size[0]*4
         patch = self._generate_patch(img, corner, size)
 
         cx, cy = size
-        cx, cy = cx / 2, cy / 2
+        cx, cy = cx // 2, cy // 2
 
         center = np.float32(cx), np.float32(cy)
 
         rotation_matrices = [
-            cv2.getRotationMatrix2D(center, theta * 180 / np.pi, 1.0)
-            for theta in range(0, 360)
+            cv2.getRotationMatrix2D(center, theta, 1.0)
+            for theta in range(0, 361)
         ]
 
         pw, ph = self._patch_size
 
-        for theta in range(0, 360, 3):
+        for theta in range(0, 360, 360):
             Rt = rotation_matrices[theta]
-            N = 50
-            r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.random.uniform(0.9, 1.1, N)
-            r_lambda2 = np.random.uniform(0.9, 1.1, N)
+            N = 20
+            r_phi = [0] #np.random.randint(0, 360, N)
+            r_lambda1 = [1.0] #np.random.uniform(0.9, 1.1, N)
+            r_lambda2 = [1.0] #np.random.uniform(0.9, 1.1, N)
 
             for lambda1, lambda2, phi in zip(r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
-                Rp1 = rotation_matrices[360 - phi - 1]
+                Rp1 = rotation_matrices[360 - phi]
 
-                Rl = np.matrix([[lambda1, 0, 1], [0, lambda2, 1]])
+                Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
 
                 warped = cv2.warpAffine(patch, Rp1, dsize=size)
                 warped = cv2.warpAffine(warped, Rl, dsize=size)
@@ -267,6 +284,37 @@ class FernDetector:
         # for (t, phi) in params:
         #     patch1, mask, Ai = affine_skew(t, phi, patch)
         #     yield patch1
+
+    def _get_corners(self, img, max_corners):
+        corners = cv2.goodFeaturesToTrack(img, maxCorners=max_corners, qualityLevel=0.01, minDistance=8)
+
+        return (corner for (corner, ) in corners)
+
+
+        img = np.float32(img)
+        dst = cv2.cornerHarris(img, 2, 3, 0.04)
+
+
+        ret, dst = cv2.threshold(dst,0.01*dst.max(),255,0)
+        dst = np.uint8(dst)
+
+        ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+        corners = cv2.cornerSubPix(img, np.float32(centroids), (5, 5), (-1, -1), criteria)
+
+
+        return corners[:Z]
+
+        # h, w = np.shape(dst)
+        #
+        # result = []
+        # threshold = dst.max() * 0.01
+        # for y in range(h):
+        #     for x in range(w):
+        #         if dst[y, x] > threshold:
+        #             result.append(((x, y), ))
+        #
+        # return result
 
     def draw_learned_ferns(self):
         w, h = self._patch_size
@@ -307,77 +355,20 @@ class FernDetector:
             cv2.imwrite("img/learn/cls{}.png".format(cls_idx), img)
 
 
-class FernMatcher:
-    pass
-
-
-def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
-    h1, w1 = img1.shape[:2]
-    h2, w2 = img2.shape[:2]
-    vis = np.zeros((max(h1, h2), w1+w2), np.uint8)
-    vis[:h1, :w1] = img1
-    vis[:h2, w1:w1+w2] = img2
-    vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-
-    if H is not None:
-        corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
-        corners = np.int32( cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2) + (w1, 0) )
-        cv2.polylines(vis, [corners], True, (255, 255, 255))
-
-    if status is None:
-        status = np.ones(len(kp_pairs), np.bool_)
-    p1, p2 = [], []  # python 2 / python 3 change of zip unpacking
-    for kpp in kp_pairs:
-        p1.append(np.int32(kpp[0]))
-        p2.append(np.int32(np.array(kpp[1]) + [w1, 0]))
-
-    green = (0, 255, 0)
-    red = (0, 0, 255)
-    white = (255, 255, 255)
-    kp_color = (51, 103, 236)
-    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if inlier:
-            col = green
-            cv2.circle(vis, (x1, y1), 2, col, -1)
-            cv2.circle(vis, (x2, y2), 2, col, -1)
-        else:
-            col = red
-            r = 2
-            thickness = 5
-            cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
-            cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
-            cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
-            cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
-
-    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if not inlier:
-            cv2.line(vis, (x1, y1), (x2, y2), (128, 128, 255))
-
-    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if inlier:
-            cv2.line(vis, (x1, y1), (x2, y2), green)
-
-    cv2.imshow(win, vis)
-
-    return vis
-
-
 if __name__ == "__main__":
-    orig = cv2.imread("../sample_ricotta.jpg")
+    orig = cv2.imread("../samples/sample_ricotta.jpg")
     orig2 = cv2.flip(orig, 1)
 
     detector = FernDetector(orig)
 
     detector.draw_learned_ferns()
-    #
-    # exit()
 
     kp1, kp2, kp_p = detector.match(orig)
 
     img = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
     H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
-    explore_match("press any key to continue", img, img, kp_p, status=status, H=H)
+    explore_match(img, img, kp_p, status=status, H=H)
 
     if H is not None:
         draw_match_bounds(orig.shape, orig, H)
@@ -389,7 +380,7 @@ if __name__ == "__main__":
 
     orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
-    cam = cv2.VideoCapture("../test_ricotta.avi")
+    cam = cv2.VideoCapture("../samples/test_ricotta.avi")
     while True:
         retval, img = cam.read()
 
@@ -401,7 +392,7 @@ if __name__ == "__main__":
         with Timer("homography"):
             H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
 
-        explore_match("match", orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
+        explore_match(orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
 
         if H is not None:
             draw_match_bounds(img.shape, img, H)

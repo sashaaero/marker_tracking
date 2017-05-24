@@ -38,3 +38,51 @@ def wait_for_key(key=None):
 def draw_poly(img, corners, color=COLOR_WHITE):
     corners = [np.int32(corners)]
     cv2.polylines(img, corners, True, color)
+
+
+def explore_match(sample, match, kp_pairs, window_name="Match exploration", status=None, H=None):
+    h1, w1 = sample.shape[:2]
+    h2, w2 = match.shape[:2]
+    vis = np.zeros((max(h1, h2), w1+w2, 3), np.uint8)
+    vis[:h1, :w1, :] = sample
+    vis[:h2, w1:w1+w2, :] = match
+    # vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+
+    if H is not None:
+        corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
+        corners = np.int32( cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2) + (w1, 0) )
+        cv2.polylines(vis, [corners], True, (255, 255, 255))
+
+    if status is None:
+        status = np.ones(len(kp_pairs), np.bool_)
+    p1, p2 = [], []  # python 2 / python 3 change of zip unpacking
+    for kpp in kp_pairs:
+        p1.append(np.int32(kpp[0]))
+        p2.append(np.int32(np.array(kpp[1]) + [w1, 0]))
+
+    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+        if inlier:
+            col = COLOR_GREEN
+            cv2.circle(vis, (x1, y1), 2, col, -1)
+            cv2.circle(vis, (x2, y2), 2, col, -1)
+        else:
+            col = COLOR_RED
+            r = 2
+            thickness = 5
+            cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
+            cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
+            cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
+            cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
+
+    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+        if not inlier:
+            cv2.line(vis, (x1, y1), (x2, y2), (128, 128, 255))
+
+    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+        if inlier:
+            cv2.line(vis, (x1, y1), (x2, y2), COLOR_GREEN)
+
+    cv2.imshow(window_name, vis)
+
+    return vis
+
