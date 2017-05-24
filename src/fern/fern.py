@@ -153,7 +153,6 @@ class FernDetector:
 
         return []
 
-
     def _draw_patch_class(self, patches, cls_idx):
         w, h = self._patch_size
 
@@ -163,11 +162,11 @@ class FernDetector:
         img = np.zeros((W, H))
         for idx, patch in enumerate(patches):
             x = (idx // 10) * (w + 5)
-            y = (idx % 10)  * (h + 5)
+            y = (idx % 10) * (h + 5)
 
             img[y:y + h, x: x + h] = patch
 
-        cv2.imwrite("img/class_{}.png".format(cls_idx), img)
+        cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
 
     def _generate_key_point_pairs(self, n=300):
         pw, ph = self._patch_size
@@ -305,7 +304,7 @@ class FernDetector:
                 # for k in range(K):
                 #     p = self._fern_p[fern_idx, k, cls_idx]
 
-            cv2.imwrite("img/learned/cls{}.png".format(cls_idx), img)
+            cv2.imwrite("img/learn/cls{}.png".format(cls_idx), img)
 
 
 class FernMatcher:
