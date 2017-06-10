@@ -61,25 +61,25 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
         p2.append(np.int32(np.array(kpp[1]) + [w1, 0]))
 
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if inlier:
+        if inlier[0]:
             col = COLOR_GREEN
             cv2.circle(vis, (x1, y1), 2, col, -1)
             cv2.circle(vis, (x2, y2), 2, col, -1)
         else:
             col = COLOR_RED
             r = 2
-            thickness = 5
+            thickness = 1
             cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
             cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
             cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
 
-    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if not inlier:
-            cv2.line(vis, (x1, y1), (x2, y2), (128, 128, 255))
+    # for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+    #     if not inlier[0]:
+    #         cv2.line(vis, (x1, y1), (x2, y2), (0, 0, 128))
 
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if inlier:
+        if inlier[0]:
             cv2.line(vis, (x1, y1), (x2, y2), COLOR_GREEN)
 
     cv2.imshow(window_name, vis)

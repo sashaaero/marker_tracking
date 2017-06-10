@@ -1,5 +1,5 @@
 import random
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
 import cv2
 import numpy as np
@@ -41,12 +41,12 @@ class Fern:
 
 
 class FernDetector:
-    def __init__(self, img, patch_size=(16, 16), max_train_corners=20, max_match_corners=200):
+    def __init__(self, sample, patch_size=(16, 16), max_train_corners=20, max_match_corners=200):
         self._patch_size = patch_size
         self._max_train_corners = max_train_corners
         self._max_match_corners = max_match_corners
         self._init_ferns()
-        self._train(img)
+        self._train(sample)
 
     def _init_ferns(self, fern_est_size=11):
         kp_pairs = list(self._generate_key_point_pairs())
@@ -74,11 +74,63 @@ class FernDetector:
 
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
+    def _get_stable_corners(self, train_img, max_corners=100):
+        class Collector:
+            x = 0
+            y = 0
+            count = 0
+
+            def __init__(self, x, y, cnt):
+                self.x = x
+                self.y = y
+                self.count = cnt
+
+        def find_collector(collectors, point, threshold2=2):
+            for c in collectors:
+                dist = (c.x - point[0]) ** 2 + (c.y - point[1]) ** 2
+                if dist < threshold2:
+                    return c
+            return None
+
+        collectors = []
+        for (Rp1, Rl, Rp, Rt), img in self._generate_affine_deformations(train_img, theta_step=36, deformations=3):
+            corners = np.array([list(self._get_corners(img, 500))])
+
+            Rp1 = cv2.invertAffineTransform(Rp1)
+            Rl = cv2.invertAffineTransform(Rl)
+            Rp = cv2.invertAffineTransform(Rp)
+            Rt = cv2.invertAffineTransform(Rt)
+
+            corners1 = cv2.transform(corners, Rt)
+            corners2 = cv2.transform(corners1, Rp)
+            corners3 = cv2.transform(corners2, Rl)
+            (corners4, ) = cv2.transform(corners3, Rp1)
+
+            # img1 = img.copy()
+            for (x, y) in corners4:
+                # cv2.circle(img1, (x, y), 2, COLOR_WHITE, -1)
+
+                collector = find_collector(collectors, (x, y))
+
+                if collector is None:
+                    collectors.append(Collector(x, y, 1))
+                else:
+                    collector.x = (collector.x * collector.count + x) / (collector.count + 1)
+                    collector.y = (collector.y * collector.count + y) / (collector.count + 1)
+                    collector.count = collector.count + 1
+
+            # cv2.imshow("sasda", img1)
+            # wait_for_key()
+
+        collectors = sorted(collectors, key=lambda c: -c.count)
+
+        for c in collectors[:max_corners]:
+            yield (int(c.x), int(c.y))
+
     def _train(self, train_img):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
 
-        corners = list(self._get_corners(img_gray, self._max_train_corners))
-        print(corners)
+        corners = list(self._get_stable_corners(img_gray, self._max_train_corners))
 
         img1 = img_gray.copy()
         for corner in corners:
@@ -149,7 +201,7 @@ class FernDetector:
 
         return key_points_trained, key_points_matched, key_points_pairs
 
-    def detect(self, image):
+    def detect(self, image, corners=None):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
@@ -157,7 +209,7 @@ class FernDetector:
 
         h, w = np.shape(image)
 
-        corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        corners = corners or np.float32([[0, 0], [w, 0], [w, h], [0, h]])
 
         if H is not None:
             return np.int32(cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2))
@@ -222,19 +274,28 @@ class FernDetector:
 
         pw2, ph2 = pw // 2, ph // 2
 
-        x0 = x - pw2
-        y0 = y - ph2
+        x0 = (w + x - pw2) % w
+        y0 = (h + y - ph2) % h
 
-        return img_extended[y0:y0 + 2 * ph2, x0:x0 + 2 * pw2]
+        return img_extended[y0:y0 + ph, x0:x0 + pw]
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
-        w, h = np.shape(img)[:2]
-        size = self._patch_size[1]*4, self._patch_size[0]*4
+        size = self._patch_size[1]*3, self._patch_size[0]*3
         patch = self._generate_patch(img, corner, size)
+        cx, cy = size[0] // 2, size[1] // 2
 
-        cx, cy = size
-        cx, cy = cx // 2, cy // 2
+        pw, ph = self._patch_size
+        x0 = int(cx - pw / 2) - 1
+        y0 = int(cy - ph / 2) - 1
+
+        for _, img in self._generate_affine_deformations(patch):
+            yield img[y0:y0 + ph, x0:x0 + pw]
+
+    def _generate_affine_deformations(self, img, theta_step=10, deformations=20):
+        size = np.shape(img)[:2]
+        size = size[1], size[0]
+        cx, cy = size[0] // 2, size[1] // 2
 
         center = np.float32(cx), np.float32(cy)
 
@@ -243,14 +304,12 @@ class FernDetector:
             for theta in range(0, 361)
         ]
 
-        pw, ph = self._patch_size
-
-        for theta in range(0, 360, 360):
+        for theta in range(0, 360, theta_step):
             Rt = rotation_matrices[theta]
-            N = 20
-            r_phi = [0] #np.random.randint(0, 360, N)
-            r_lambda1 = [1.0] #np.random.uniform(0.9, 1.1, N)
-            r_lambda2 = [1.0] #np.random.uniform(0.9, 1.1, N)
+            N = deformations
+            r_phi = np.random.randint(0, 360, N)
+            r_lambda1 = np.random.uniform(0.9, 1.1, N)
+            r_lambda2 = np.random.uniform(0.9, 1.1, N)
 
             for lambda1, lambda2, phi in zip(r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
@@ -258,10 +317,10 @@ class FernDetector:
 
                 Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
 
-                warped = cv2.warpAffine(patch, Rp1, dsize=size)
-                warped = cv2.warpAffine(warped, Rl, dsize=size)
-                warped = cv2.warpAffine(warped, Rp, dsize=size)
-                warped = cv2.warpAffine(warped, Rt, dsize=size)
+                warped = cv2.warpAffine(img, Rp1,   dsize=size, borderMode=cv2.BORDER_REFLECT)
+                warped = cv2.warpAffine(warped, Rl, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                warped = cv2.warpAffine(warped, Rp, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                warped = cv2.warpAffine(warped, Rt, dsize=size, borderMode=cv2.BORDER_REFLECT)
 
                 # add gaussian noise
                 #noise = np.uint8(np.random.normal(0, 25, (size[1], size[0])))
@@ -271,19 +330,7 @@ class FernDetector:
 
                 noised = blurred # cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
-                x0 = int(cx - pw / 2)
-                y0 = int(cy - ph / 2)
-
-                yield noised[y0:y0 + ph, x0:x0 + pw]
-
-        # params = [(1.0, 0.0)]
-        # t = 1.0
-        # for phi in np.arange(-90, 90, 12.0 / t):
-        #     params.append((t, phi))
-        #
-        # for (t, phi) in params:
-        #     patch1, mask, Ai = affine_skew(t, phi, patch)
-        #     yield patch1
+                yield (Rp1, Rl, Rp, Rt), noised
 
     def _get_corners(self, img, max_corners):
         corners = cv2.goodFeaturesToTrack(img, maxCorners=max_corners, qualityLevel=0.01, minDistance=8)
@@ -365,10 +412,8 @@ if __name__ == "__main__":
 
     kp1, kp2, kp_p = detector.match(orig)
 
-    img = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
-
     H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
-    explore_match(img, img, kp_p, status=status, H=H)
+    explore_match(orig, orig, kp_p, status=status, H=H)
 
     if H is not None:
         draw_match_bounds(orig.shape, orig, H)
@@ -378,7 +423,6 @@ if __name__ == "__main__":
     wait_for_key()
     cv2.destroyAllWindows()
 
-    orig = cv2.cvtColor(orig, cv2.COLOR_BGR2GRAY)
 
     cam = cv2.VideoCapture("../samples/test_ricotta.avi")
     while True:
@@ -392,7 +436,7 @@ if __name__ == "__main__":
         with Timer("homography"):
             H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
 
-        explore_match(orig, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), kp_p, status, H)
+        explore_match(orig, img, kp_pairs=kp_p, status=status, H=H)
 
         if H is not None:
             draw_match_bounds(img.shape, img, H)
