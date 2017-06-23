@@ -74,9 +74,9 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
             cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
 
-    # for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-    #     if not inlier[0]:
-    #         cv2.line(vis, (x1, y1), (x2, y2), (0, 0, 128))
+    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+        if not inlier[0]:
+            cv2.line(vis, (x1, y1), (x2, y2), (0, 0, 128))
 
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
         if inlier[0]:

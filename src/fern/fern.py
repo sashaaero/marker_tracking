@@ -9,7 +9,8 @@ from asift.common import Timer, iter_timer
 from util import wait_for_key, key_pressed, explore_match, COLOR_WHITE
 from webcam import draw_match_bounds
 
-Z = 20
+Z = 40
+
 
 class Fern:
     def __init__(self, size, key_point_pairs):
@@ -41,7 +42,7 @@ class Fern:
 
 
 class FernDetector:
-    def __init__(self, sample, patch_size=(16, 16), max_train_corners=20, max_match_corners=200):
+    def __init__(self, sample, patch_size=(16, 16), max_train_corners=40, max_match_corners=200):
         self._patch_size = patch_size
         self._max_train_corners = max_train_corners
         self._max_match_corners = max_match_corners
@@ -142,7 +143,7 @@ class FernDetector:
 
         self._classes_count = len(corners)
 
-        K = 2**(self._S+1)
+        K = 2 ** (self._S + 1)
         self._fern_p = np.zeros((len(self._ferns), self._classes_count, K))
         self.key_points = []
 
@@ -153,10 +154,10 @@ class FernDetector:
             patch_class = list(self._generate_patch_class(img_gray, corner))
             self._draw_patch_class(patch_class, class_idx)
 
-            for fern_idx, fern in enumerate(self._ferns):
-                for patch in patch_class:
+            for patch in patch_class:
+                for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
-                    assert k < K, "WTF!!!"
+                    # assert k < K, "WTF!!!"
                     self._fern_p[fern_idx, class_idx, k] += 1
 
         Nr = 1
@@ -274,8 +275,9 @@ class FernDetector:
 
         pw2, ph2 = pw // 2, ph // 2
 
-        x0 = (w + x - pw2) % w
-        y0 = (h + y - ph2) % h
+        x0 = w + (w + x - pw2) % w
+        y0 = h + (h + y - ph2) % h
+
 
         return img_extended[y0:y0 + ph, x0:x0 + pw]
 
@@ -308,8 +310,8 @@ class FernDetector:
             Rt = rotation_matrices[theta]
             N = deformations
             r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.random.uniform(0.9, 1.1, N)
-            r_lambda2 = np.random.uniform(0.9, 1.1, N)
+            r_lambda1 = np.random.uniform(0.999, 1.001, N)
+            r_lambda2 = np.random.uniform(0.999, 1.001, N)
 
             for lambda1, lambda2, phi in zip(r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
