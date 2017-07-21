@@ -8,7 +8,7 @@ def benchmark_dataset(dataset, explore=True):
     ground_truth = util.get_ground_truth(dataset)
     sample = util.get_sample(dataset)
 
-    detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=300)
+    detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
     detector.draw_learned_ferns()
 
     img = sample.copy()

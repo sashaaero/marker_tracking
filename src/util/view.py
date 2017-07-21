@@ -46,7 +46,9 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
     vis = np.zeros((max(h1, h2), w1+w2, 3), np.uint8)
     vis[:h1, :w1, :] = sample
     vis[:h2, w1:w1+w2, :] = match
-    # vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+
+    sample_copy = sample.copy()
+    match_copy = match.copy()
 
     if H is not None:
         corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
@@ -65,6 +67,9 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
             col = COLOR_GREEN
             cv2.circle(vis, (x1, y1), 2, col, -1)
             cv2.circle(vis, (x2, y2), 2, col, -1)
+
+            cv2.circle(sample_copy, (x1, y1), 2, col, -1)
+            cv2.circle(match_copy, (x2-w1, y2), 2, col, -1)
         else:
             col = COLOR_RED
             r = 2
@@ -74,15 +79,21 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
             cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
 
-    for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
-        if not inlier[0]:
-            cv2.line(vis, (x1, y1), (x2, y2), (0, 0, 128))
+            cv2.circle(sample_copy, (x1, y1), 2, col, -1)
+            cv2.circle(match_copy, (x2-w1, y2), 2, col, -1)
+
+    # for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
+    #     if not inlier[0]:
+    #         cv2.line(vis, (x1, y1), (x2, y2), (0, 0, 128))
 
     for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):
         if inlier[0]:
             cv2.line(vis, (x1, y1), (x2, y2), COLOR_GREEN)
 
     cv2.imshow(window_name, vis)
+    cv2.imshow(window_name + " 1", sample_copy)
+    cv2.imshow(window_name + " 2", match_copy)
+
 
     return vis
 

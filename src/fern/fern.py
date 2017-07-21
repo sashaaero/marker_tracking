@@ -6,7 +6,7 @@ import numpy as np
 
 from asift.common import Timer, iter_timer
 
-from util import wait_for_key, key_pressed, explore_match, COLOR_WHITE
+from util import wait_for_key, key_pressed, explore_match, mult, COLOR_WHITE
 from webcam import draw_match_bounds
 
 Z = 40
@@ -102,10 +102,12 @@ class FernDetector:
             Rp = cv2.invertAffineTransform(Rp)
             Rt = cv2.invertAffineTransform(Rt)
 
-            corners1 = cv2.transform(corners, Rt)
-            corners2 = cv2.transform(corners1, Rp)
-            corners3 = cv2.transform(corners2, Rl)
-            (corners4, ) = cv2.transform(corners3, Rp1)
+            # corners1 = cv2.transform(corners, Rt)
+            # corners2 = cv2.transform(corners1, Rp)
+            # corners3 = cv2.transform(corners2, Rl)
+            # (corners4, ) = cv2.transform(corners3, Rp1)
+
+            (corners4, ) = cv2.transform(corners, mult(Rp1, mult(Rl, mult(Rp, Rt))))
 
             # img1 = img.copy()
             for (x, y) in corners4:
@@ -139,7 +141,6 @@ class FernDetector:
             cv2.circle(img1, (x, y), 3, COLOR_WHITE, -1)
 
         cv2.imshow("corners", img1)
-        wait_for_key()
 
         self._classes_count = len(corners)
 
@@ -310,8 +311,8 @@ class FernDetector:
             Rt = rotation_matrices[theta]
             N = deformations
             r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.random.uniform(0.999, 1.001, N)
-            r_lambda2 = np.random.uniform(0.999, 1.001, N)
+            r_lambda1 = np.array([1] * N, np.float32)  # np.random.uniform(0.999, 1.001, N)
+            r_lambda2 = np.array([1] * N, np.float32)  #np.random.uniform(0.999, 1.001, N)
 
             for lambda1, lambda2, phi in zip(r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
@@ -319,10 +320,17 @@ class FernDetector:
 
                 Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
 
-                warped = cv2.warpAffine(img, Rp1,   dsize=size, borderMode=cv2.BORDER_REFLECT)
-                warped = cv2.warpAffine(warped, Rl, dsize=size, borderMode=cv2.BORDER_REFLECT)
-                warped = cv2.warpAffine(warped, Rp, dsize=size, borderMode=cv2.BORDER_REFLECT)
-                warped = cv2.warpAffine(warped, Rt, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                R = mult(Rt, mult(Rp, mult(Rl, Rp1)))
+
+                # warped = cv2.warpAffine(img, Rp1,   dsize=size, borderMode=cv2.BORDER_REFLECT)
+                # warped = cv2.warpAffine(warped, Rl, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                # warped = cv2.warpAffine(warped, Rp, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                # warped = cv2.warpAffine(warped, Rt, dsize=size, borderMode=cv2.BORDER_REFLECT)
+
+                warped = cv2.warpAffine(img, R, dsize=size, borderMode=cv2.BORDER_REFLECT)
+
+
+                # print(len(list(abs((warped - warped1)) > 1)))
 
                 # add gaussian noise
                 #noise = np.uint8(np.random.normal(0, 25, (size[1], size[0])))
