@@ -5,11 +5,14 @@ import cv2
 import numpy as np
 
 from asift.common import Timer, iter_timer
+import matplotlib.pyplot as plt
 
 from util import wait_for_key, key_pressed, explore_match, mult, COLOR_WHITE
 from webcam import draw_match_bounds
 
 Z = 40
+
+random.seed(1234)
 
 
 class Fern:
@@ -86,31 +89,22 @@ class FernDetector:
                 self.y = y
                 self.count = cnt
 
-        def find_collector(collectors, point, threshold2=2):
+        def find_collector(collectors, point, radius=2):
+            radius2 = radius ** 2
             for c in collectors:
                 dist = (c.x - point[0]) ** 2 + (c.y - point[1]) ** 2
-                if dist < threshold2:
+                if dist < radius2:
                     return c
             return None
 
         collectors = []
-        for (Rp1, Rl, Rp, Rt), img in self._generate_affine_deformations(train_img, theta_step=36, deformations=3):
+        for R_inv, img in self._generate_affine_deformations(train_img, theta_step=36, deformations=3):
             corners = np.array([list(self._get_corners(img, 500))])
 
-            Rp1 = cv2.invertAffineTransform(Rp1)
-            Rl = cv2.invertAffineTransform(Rl)
-            Rp = cv2.invertAffineTransform(Rp)
-            Rt = cv2.invertAffineTransform(Rt)
-
-            # corners1 = cv2.transform(corners, Rt)
-            # corners2 = cv2.transform(corners1, Rp)
-            # corners3 = cv2.transform(corners2, Rl)
-            # (corners4, ) = cv2.transform(corners3, Rp1)
-
-            (corners4, ) = cv2.transform(corners, mult(Rp1, mult(Rl, mult(Rp, Rt))))
+            (corners_inv, ) = cv2.transform(corners, R_inv)
 
             # img1 = img.copy()
-            for (x, y) in corners4:
+            for (x, y) in corners_inv:
                 # cv2.circle(img1, (x, y), 2, COLOR_WHITE, -1)
 
                 collector = find_collector(collectors, (x, y))
@@ -185,6 +179,8 @@ class FernDetector:
         key_points_matched = []
         key_points_pairs = []
 
+        most_probable_classes = set()
+
         for corner in iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count, ))
 
@@ -194,12 +190,15 @@ class FernDetector:
                 probs += np.log(self._fern_p[fern_idx, :, k])
 
             most_probable_class = np.argmax(probs)
+            most_probable_classes.add(most_probable_class)
 
             # print(np.exp(probs))
 
             key_points_trained.append(self.key_points[most_probable_class])
             key_points_matched.append(corner)
             key_points_pairs.append((self.key_points[most_probable_class], corner))
+
+        print(key_points_pairs)
 
         return key_points_trained, key_points_matched, key_points_pairs
 
@@ -249,58 +248,44 @@ class FernDetector:
         h, w = np.shape(img)
         h, w = int(h), int(w)
 
-        img_left_mirrored = cv2.flip(img, 1)
-        img_top_mirrored = cv2.flip(img, 0)
-        img_lt_mirrored = cv2.flip(img_top_mirrored, 1)
+        img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
 
-        img_extended = np.zeros((h*3, w*3), np.uint8)
-        img_extended[0:h,     0:w] = img_lt_mirrored
-        img_extended[0:h,     w:w*2] = img_top_mirrored
-        img_extended[0:h,     w*2:w*3] = img_lt_mirrored
-
-        img_extended[h:h*2,   0:w] = img_left_mirrored
-        img_extended[h:h*2,   w:w*2] = img
-        img_extended[h:h*2,   w*2:w*3] = img_left_mirrored
-
-        img_extended[h*2:h*3,  0:w] = img_lt_mirrored
-        img_extended[h*2:h*3,  w:w*2] = img_top_mirrored
-        img_extended[h*2:h*3,  w*2:w*3] = img_lt_mirrored
-
-        x, y = center
-        x, y = int(x) + h, int(y) + w
+        y, x = center
+        y, x = int(y) + h, int(x) + w
 
         if size is None:
-            pw, ph = self._patch_size
+            ph, pw = self._patch_size
         else:
-            pw, ph = size
+            ph, pw = size
 
-        pw2, ph2 = pw // 2, ph // 2
+        ph2, pw2 = ph // 2, pw // 2
 
-        x0 = w + (w + x - pw2) % w
-        y0 = h + (h + y - ph2) % h
+        x0 = w + ((w + x - pw2) % w)
+        y0 = h + ((h + y - ph2) % h)
 
 
         return img_extended[y0:y0 + ph, x0:x0 + pw]
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
-        size = self._patch_size[1]*3, self._patch_size[0]*3
+        size = self._patch_size[1]*4, self._patch_size[0]*4
         patch = self._generate_patch(img, corner, size)
+        size = np.shape(patch)[:2]
         cx, cy = size[0] // 2, size[1] // 2
 
-        pw, ph = self._patch_size
-        x0 = int(cx - pw / 2) - 1
-        y0 = int(cy - ph / 2) - 1
+        ph, pw = self._patch_size
+        x0 = int(cx - pw // 2) - 1
+        y0 = int(cy - ph // 2) - 1
 
         for _, img in self._generate_affine_deformations(patch):
             yield img[y0:y0 + ph, x0:x0 + pw]
 
     def _generate_affine_deformations(self, img, theta_step=10, deformations=20):
-        size = np.shape(img)[:2]
-        size = size[1], size[0]
-        cx, cy = size[0] // 2, size[1] // 2
+        H, W = np.shape(img)[:2]
 
-        center = np.float32(cx), np.float32(cy)
+        img[H // 2, W // 2] = 255
+
+        center = np.float32(H) / 2.0, np.float32(W) / 2.0
 
         rotation_matrices = [
             cv2.getRotationMatrix2D(center, theta, 1.0)
@@ -320,27 +305,30 @@ class FernDetector:
 
                 Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
 
-                R = mult(Rt, mult(Rp, mult(Rl, Rp1)))
+                Rz = mult(Rp, mult(Rl, Rp1))
+
+                R = mult(Rt, Rz)
+                R_inv = cv2.invertAffineTransform(R)
 
                 # warped = cv2.warpAffine(img, Rp1,   dsize=size, borderMode=cv2.BORDER_REFLECT)
                 # warped = cv2.warpAffine(warped, Rl, dsize=size, borderMode=cv2.BORDER_REFLECT)
                 # warped = cv2.warpAffine(warped, Rp, dsize=size, borderMode=cv2.BORDER_REFLECT)
                 # warped = cv2.warpAffine(warped, Rt, dsize=size, borderMode=cv2.BORDER_REFLECT)
 
-                warped = cv2.warpAffine(img, R, dsize=size, borderMode=cv2.BORDER_REFLECT)
+                warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_CONSTANT, borderValue=255)
 
 
                 # print(len(list(abs((warped - warped1)) > 1)))
 
                 # add gaussian noise
-                #noise = np.uint8(np.random.normal(0, 25, (size[1], size[0])))
+                #noise = np.uint8(np.random.normal(0, 25, (H, W))))
                 blurred = warped #cv2.GaussianBlur(warped, (7, 7), 2)
 
                 noise_ratio = 0
 
                 noised = blurred # cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
-                yield (Rp1, Rl, Rp, Rt), noised
+                yield R_inv, noised
 
     def _get_corners(self, img, max_corners):
         corners = cv2.goodFeaturesToTrack(img, maxCorners=max_corners, qualityLevel=0.01, minDistance=8)
@@ -410,6 +398,24 @@ class FernDetector:
                 #     p = self._fern_p[fern_idx, k, cls_idx]
 
             cv2.imwrite("img/learn/cls{}.png".format(cls_idx), img)
+
+    def draw_learned_ferns_2(self, path=""):
+        print("Drawing grphics..")
+        ferns_count, K, _ = self._fern_p.shape
+        x = list(range(K))
+
+        for cls_idx in range(self._classes_count):
+            f, axes_arr = plt.subplots(ferns_count,
+                                       figsize=(6, 1.5*ferns_count), sharey=True, sharex=True)
+
+            for fern_idx, fern in enumerate(self._ferns):
+                axes_arr[fern_idx].plot(x, self._fern_p[fern_idx, :, cls_idx])
+
+            # f.subplots_adjust(hspace=0)
+
+            plt.savefig("{}plot_cls{}.png".format(path, cls_idx), dpi=100)
+            plt.close(f)
+        print("All graphs were drawn")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ def benchmark_dataset(dataset, explore=True):
 
     detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
     detector.draw_learned_ferns()
+    # detector.draw_learned_ferns_2("img/learn/")
 
     img = sample.copy()
     detection_box = detector.detect(img)
