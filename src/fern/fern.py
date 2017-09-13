@@ -25,7 +25,7 @@ class Fern:
         result = 0
 
         for p1, p2 in self.kp_pairs:
-            result += int(sample[p1[1]][p1[0]] < sample[p2[1]][p2[0]])
+            result += 0 if (sample[p1[1]][p1[0]] < sample[p2[1]][p2[0]]) else 1
 
             result <<= 1
 
