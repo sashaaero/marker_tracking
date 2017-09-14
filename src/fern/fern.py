@@ -98,7 +98,7 @@ class FernDetector:
             return None
 
         collectors = []
-        for R_inv, img in self._generate_affine_deformations(train_img, theta_step=36, deformations=3):
+        for R_inv, img in FernDetector._generate_affine_deformations(train_img, theta_step=36, deformations=3):
             corners = np.array([list(self._get_corners(img, 500))])
 
             (corners_inv, ) = cv2.transform(corners, R_inv)
@@ -258,34 +258,36 @@ class FernDetector:
         else:
             ph, pw = size
 
+        assert pw <= w and ph <= h
+
         ph2, pw2 = ph // 2, pw // 2
 
-        x0 = w + ((w + x - pw2) % w)
-        y0 = h + ((h + y - ph2) % h)
-
+        x0 = x - pw2
+        y0 = y - ph2
 
         return img_extended[y0:y0 + ph, x0:x0 + pw]
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
-        size = self._patch_size[1]*4, self._patch_size[0]*4
-        patch = self._generate_patch(img, corner, size)
+        #size = self._patch_size[1]*4, self._patch_size[0]*4
+        patch = self._generate_patch(img, corner)
         size = np.shape(patch)[:2]
         cx, cy = size[0] // 2, size[1] // 2
 
-        ph, pw = self._patch_size
-        x0 = int(cx - pw // 2) - 1
-        y0 = int(cy - ph // 2) - 1
+        # ph, pw = self._patch_size
+        # x0 = int(cx - pw // 2) - 1
+        # y0 = int(cy - ph // 2) - 1
 
-        for _, img in self._generate_affine_deformations(patch):
-            yield img[y0:y0 + ph, x0:x0 + pw]
+        for _, img in FernDetector._generate_affine_deformations(patch):
+            yield img #[y0:y0 + ph, x0:x0 + pw]
 
-    def _generate_affine_deformations(self, img, theta_step=10, deformations=20):
+    @staticmethod
+    def _generate_affine_deformations(img, theta_step=10, deformations=20):
         H, W = np.shape(img)[:2]
 
-        img[H // 2, W // 2] = 255
+        center = np.float32(H / 2.0), np.float32(W / 2.0)
 
-        center = np.float32(H) / 2.0, np.float32(W) / 2.0
+        #cv2.line(img, center, (0, 0), 255, 1)
 
         rotation_matrices = [
             cv2.getRotationMatrix2D(center, theta, 1.0)
@@ -296,10 +298,11 @@ class FernDetector:
             Rt = rotation_matrices[theta]
             N = deformations
             r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.array([1] * N, np.float32)  # np.random.uniform(0.999, 1.001, N)
-            r_lambda2 = np.array([1] * N, np.float32)  #np.random.uniform(0.999, 1.001, N)
+            r_lambda1 = np.random.uniform(0.9, 1.1, N)
+            r_lambda2 = np.random.uniform(0.9, 1.1, N)
+            r_noise_ratio = np.random.uniform(0, 0.2, N)
 
-            for lambda1, lambda2, phi in zip(r_lambda1, r_lambda2, r_phi):
+            for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
                 Rp1 = rotation_matrices[360 - phi]
 
@@ -310,23 +313,15 @@ class FernDetector:
                 R = mult(Rt, Rz)
                 R_inv = cv2.invertAffineTransform(R)
 
-                # warped = cv2.warpAffine(img, Rp1,   dsize=size, borderMode=cv2.BORDER_REFLECT)
-                # warped = cv2.warpAffine(warped, Rl, dsize=size, borderMode=cv2.BORDER_REFLECT)
-                # warped = cv2.warpAffine(warped, Rp, dsize=size, borderMode=cv2.BORDER_REFLECT)
-                # warped = cv2.warpAffine(warped, Rt, dsize=size, borderMode=cv2.BORDER_REFLECT)
-
-                warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_CONSTANT, borderValue=255)
-
-
-                # print(len(list(abs((warped - warped1)) > 1)))
+                warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_REFLECT101)
 
                 # add gaussian noise
-                #noise = np.uint8(np.random.normal(0, 25, (H, W))))
+                noise = np.uint8(np.random.normal(0, 25, (W, H)))
                 blurred = warped #cv2.GaussianBlur(warped, (7, 7), 2)
 
-                noise_ratio = 0
+                #noise_ratio = 0.1
 
-                noised = blurred # cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
+                noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
                 yield R_inv, noised
 
