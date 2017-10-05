@@ -2,6 +2,7 @@ import util
 import cv2
 import fern
 import numpy as np
+import random
 
 
 def benchmark_dataset(dataset, explore=True):
@@ -33,11 +34,13 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
     if explore:
         kp_t, kp_m, kp_p = detector.match(img)
-        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 10.0)
-        util.explore_match(sample, img, kp_pairs=kp_p, H=H, status=status)
+        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 5.0)
+        util.explore_match_mouse(sample, img, kp_pairs=kp_p, H=H, status=status)
+        #util.explore_match(sample, img, kp_pairs=kp_p, H=H, status=status)
 
     util.wait_for_key()
 
 if __name__ == "__main__":
+    random.seed(1234)
     benchmark_dataset("ClifBar")
     # benchmark_dataset("Box")

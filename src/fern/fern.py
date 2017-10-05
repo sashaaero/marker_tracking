@@ -12,7 +12,39 @@ from webcam import draw_match_bounds
 
 Z = 40
 
-random.seed(1234)
+
+class Collector:
+    def __init__(self, point):
+        self._point_sum = np.array(point)
+        self._count = 1
+
+    def push(self, new_point):
+        new_point = np.array(new_point)
+        assert new_point.shape[0] == 2
+
+        self._point_sum += new_point
+        self._count += 1
+
+    def dist2(self, point):
+        point = np.array(point)
+        assert point.shape[0] == 2
+
+        return np.sum((self._point_sum - point) ** 2)
+
+    @property
+    def x(self):
+        return self._point_sum[1] / self._count
+
+    @property
+    def y(self):
+        return self._point_sum[0] / self._count
+
+    @property
+    def count(self):
+        return self._count
+
+    def __str__(self):
+        return "Collector(x:{}, y:{}, cnt:{})".format(self.x, self.y, self._count)
 
 
 class Fern:
@@ -39,7 +71,7 @@ class Fern:
             k >>= 1
 
         levels.reverse()
-        for ((x1, y1), (x2, y2)), level in zip(self.kp_pairs, levels):
+        for ((y1, x1), (y2, x2)), level in zip(self.kp_pairs, levels):
             sample[y1, x1] = 255 * level
             sample[y2, x2] = 255 * (1 - level)
 
@@ -79,23 +111,19 @@ class FernDetector:
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
     def _get_stable_corners(self, train_img, max_corners=100):
-        class Collector:
-            x = 0
-            y = 0
-            count = 0
-
-            def __init__(self, x, y, cnt):
-                self.x = x
-                self.y = y
-                self.count = cnt
+        H, W = np.shape(train_img)[:2]
 
         def find_collector(collectors, point, radius=2):
             radius2 = radius ** 2
+
+            min_c = None
             for c in collectors:
-                dist = (c.x - point[0]) ** 2 + (c.y - point[1]) ** 2
+                dist = c.dist2(point)
                 if dist < radius2:
-                    return c
-            return None
+                    min_c = c
+                    radius2 = dist
+
+            return min_c
 
         collectors = []
         for R_inv, img in FernDetector._generate_affine_deformations(train_img, theta_step=36, deformations=3):
@@ -103,35 +131,36 @@ class FernDetector:
 
             (corners_inv, ) = cv2.transform(corners, R_inv)
 
-            # img1 = img.copy()
-            for (x, y) in corners_inv:
-                # cv2.circle(img1, (x, y), 2, COLOR_WHITE, -1)
+            for corner in corners_inv:
+                corner[1], corner[0] = corner[0], corner[1]
+                cy, cx = corner
 
-                collector = find_collector(collectors, (x, y))
+                if not (0 <= cy < H and 0 <= cx < W):
+                    continue
+
+                # assert 0 <= cy < H and 0 <= cx < W, "(cy, cx)=({}, {}) (H, W)=({}, {})".format(cy, cx, H, W)
+
+                collector = find_collector(collectors, corner)
 
                 if collector is None:
-                    collectors.append(Collector(x, y, 1))
+                    collectors.append(Collector(corner))
                 else:
-                    collector.x = (collector.x * collector.count + x) / (collector.count + 1)
-                    collector.y = (collector.y * collector.count + y) / (collector.count + 1)
-                    collector.count = collector.count + 1
-
-            # cv2.imshow("sasda", img1)
-            # wait_for_key()
+                    collector.push(corner)
 
         collectors = sorted(collectors, key=lambda c: -c.count)
 
         for c in collectors[:max_corners]:
-            yield (int(c.x), int(c.y))
+            yield (int(c.y), int(c.x))
 
     def _train(self, train_img):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
+        H, W = np.shape(img_gray)[:2]
 
         corners = list(self._get_stable_corners(img_gray, self._max_train_corners))
 
         img1 = img_gray.copy()
         for corner in corners:
-            x, y = corner
+            y, x = corner
             cv2.circle(img1, (x, y), 3, COLOR_WHITE, -1)
 
         cv2.imshow("corners", img1)
@@ -145,6 +174,9 @@ class FernDetector:
         title = "Training {} classes".format(self._classes_count)
         for class_idx, corner in enumerate(iter_timer(corners, title=title, print_iterations=True)):
             self.key_points.append(corner)
+
+            cy, cx = corner
+            assert 0 <= cy <= H and 0 <= cx <= W, "(cy, cx)=({}, {}) (H, W)=({}, {})".format(cy, cx, H, W)
 
             patch_class = list(self._generate_patch_class(img_gray, corner))
             self._draw_patch_class(patch_class, class_idx)
@@ -198,7 +230,7 @@ class FernDetector:
             key_points_matched.append(corner)
             key_points_pairs.append((self.key_points[most_probable_class], corner))
 
-        print(key_points_pairs)
+        #print(key_points_pairs)
 
         return key_points_trained, key_points_matched, key_points_pairs
 
@@ -242,7 +274,7 @@ class FernDetector:
         ys1 = np.random.random_integers(1, ph - 2, n)
 
         for x0, y0, x1, y1 in zip(xs0, ys0, xs1, ys1):
-            yield (x0, y0), (pw - x0 - 1, ph - y0 - 1) #(x1, y1)
+            yield (y0, x0), (y1, x1)
 
     def _generate_patch(self, img, center, size=None):
         h, w = np.shape(img)
@@ -251,6 +283,8 @@ class FernDetector:
         img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
 
         y, x = center
+        assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
+
         y, x = int(y) + h, int(x) + w
 
         if size is None:
@@ -258,7 +292,7 @@ class FernDetector:
         else:
             ph, pw = size
 
-        assert pw <= w and ph <= h
+        assert 0 < pw <= w and 0 < ph <= h
 
         ph2, pw2 = ph // 2, pw // 2
 
@@ -290,7 +324,7 @@ class FernDetector:
         #cv2.line(img, center, (0, 0), 255, 1)
 
         rotation_matrices = [
-            cv2.getRotationMatrix2D(center, theta, 1.0)
+            cv2.getRotationMatrix2D((center[1], center[0]), theta, 1.0)
             for theta in range(0, 361)
         ]
 
@@ -300,7 +334,7 @@ class FernDetector:
             r_phi = np.random.randint(0, 360, N)
             r_lambda1 = np.random.uniform(0.9, 1.1, N)
             r_lambda2 = np.random.uniform(0.9, 1.1, N)
-            r_noise_ratio = np.random.uniform(0, 0.2, N)
+            r_noise_ratio = np.random.uniform(0, 0.1, N)
 
             for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
                 Rp  = rotation_matrices[phi]
@@ -319,8 +353,6 @@ class FernDetector:
                 noise = np.uint8(np.random.normal(0, 25, (W, H)))
                 blurred = warped #cv2.GaussianBlur(warped, (7, 7), 2)
 
-                #noise_ratio = 0.1
-
                 noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
                 yield R_inv, noised
@@ -328,14 +360,14 @@ class FernDetector:
     def _get_corners(self, img, max_corners):
         corners = cv2.goodFeaturesToTrack(img, maxCorners=max_corners, qualityLevel=0.01, minDistance=8)
 
-        return (corner for (corner, ) in corners)
+        return ((y, x) for ((x, y), ) in corners)
 
 
         img = np.float32(img)
         dst = cv2.cornerHarris(img, 2, 3, 0.04)
 
 
-        ret, dst = cv2.threshold(dst,0.01*dst.max(),255,0)
+        ret, dst = cv2.threshold(dst, 0.01*dst.max(), 255, 0)
         dst = np.uint8(dst)
 
         ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
@@ -364,7 +396,7 @@ class FernDetector:
 
         mask = np.zeros((h, w), np.uint8)
         for fern in self._ferns:
-            for (x1, y1), (x2, y2) in fern.kp_pairs:
+            for (y1, x1), (y2, x2) in fern.kp_pairs:
                 mask[y1, x1] = 255
                 mask[y2, x2] = 255
 
