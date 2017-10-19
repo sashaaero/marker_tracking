@@ -60,7 +60,7 @@ class Fern:
         for p1, p2 in self.kp_pairs:
             result += 0 if (sample[p1[1]][p1[0]] < sample[p2[1]][p2[0]]) else 1
 
-            result <<= 1
+            result *= 2
 
         return result
 
@@ -288,13 +288,6 @@ class FernDetector:
         h, w = np.shape(img)
         h, w = int(h), int(w)
 
-        img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
-
-        y, x = center
-        assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
-
-        y, x = int(y) + h, int(x) + w
-
         if size is None:
             ph, pw = self._patch_size
         else:
@@ -303,9 +296,22 @@ class FernDetector:
         assert 0 < pw <= w and 0 < ph <= h
 
         ph2, pw2 = ph // 2, pw // 2
+        y, x = center
 
+        if pw2 <= x and x + pw2 < w and ph2 <= y and y + ph2 <= h:
+            # fast way
+            return img[int(y) - ph2:int(y) + ph2, int(x) - pw2:int(x) + pw2]
+
+
+
+
+        assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
+
+        y, x = int(y) + h, int(x) + w
         x0 = x - pw2
         y0 = y - ph2
+
+        img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
 
         return img_extended[y0:y0 + ph, x0:x0 + pw]
 
