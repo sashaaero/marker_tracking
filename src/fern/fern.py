@@ -4,6 +4,7 @@ from collections import defaultdict, namedtuple
 import cv2
 import numpy as np
 
+import util
 from asift.common import Timer, iter_timer
 import matplotlib.pyplot as plt
 
@@ -111,6 +112,11 @@ class FernDetector:
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
     def _get_stable_corners(self, train_img, max_corners=100):
+        for c in self._get_corners(train_img, max_corners):
+            yield np.int32(c)
+
+        return
+
         H, W = np.shape(train_img)[:2]
 
         def find_collector(collectors, point, radius=2):
@@ -184,7 +190,7 @@ class FernDetector:
             for patch in patch_class:
                 for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
-                    # assert k < K, "WTF!!!"
+                    assert 0 <= k < K, "WTF!!!"
                     self._fern_p[fern_idx, class_idx, k] += 1
 
         Nr = 1
@@ -195,7 +201,10 @@ class FernDetector:
                 self._fern_p[fern_idx, cls_idx, :] += Nr
                 self._fern_p[fern_idx, cls_idx, :] /= (Nc + K * Nr)
 
-                # print(max(self._fern_p[fern_idx, cls_idx, :]) - min(self._fern_p[fern_idx, cls_idx, :]))
+                print("P_min={}, P_max={}"
+                      .format(np.min(self._fern_p[fern_idx, cls_idx, :]),
+                              np.max(self._fern_p[fern_idx, cls_idx, :]))
+                      )
 
         print("Training complete!")
 
@@ -224,30 +233,29 @@ class FernDetector:
             most_probable_class = np.argmax(probs)
             most_probable_classes.add(most_probable_class)
 
-            # print(np.exp(probs))
+            #print("C: {}, p={}".format(corner, np.exp(np.max(probs))))
 
             key_points_trained.append(self.key_points[most_probable_class])
             key_points_matched.append(corner)
             key_points_pairs.append((self.key_points[most_probable_class], corner))
 
-        #print(key_points_pairs)
+        return util.flip_points(key_points_trained), \
+               util.flip_points(key_points_matched), \
+               key_points_pairs
 
-        return key_points_trained, key_points_matched, key_points_pairs
-
-    def detect(self, image, corners=None):
+    def detect(self, image):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
-        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 5.0)
+        H, status = cv2.findHomography(kp_t, kp_m, cv2.RANSAC, 5.0)
 
         h, w = np.shape(image)
-
-        corners = corners or np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
 
         if H is not None:
-            return np.int32(cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2))
+            return util.transform32(corners, H), H
 
-        return []
+        return [], H
 
     def _draw_patch_class(self, patches, cls_idx):
         w, h = self._patch_size
@@ -374,7 +382,6 @@ class FernDetector:
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
         corners = cv2.cornerSubPix(img, np.float32(centroids), (5, 5), (-1, -1), criteria)
 
-
         return corners[:Z]
 
         # h, w = np.shape(dst)
@@ -455,7 +462,7 @@ if __name__ == "__main__":
 
     kp1, kp2, kp_p = detector.match(orig)
 
-    H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+    H, status = cv2.findHomography(kp1, kp2, cv2.RANSAC, 5.0)
     explore_match(orig, orig, kp_p, status=status, H=H)
 
     if H is not None:
@@ -477,7 +484,7 @@ if __name__ == "__main__":
         # wait_for_key(13)
 
         with Timer("homography"):
-            H, status = cv2.findHomography(np.array(kp1), np.array(kp2), cv2.RANSAC, 5.0)
+            H, status = cv2.findHomography(kp1, kp2, cv2.RANSAC, 5.0)
 
         explore_match(orig, img, kp_pairs=kp_p, status=status, H=H)
 

@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 
 def mult(m1, m2):
@@ -9,3 +10,16 @@ def mult(m1, m2):
 
     return result[:2, :]
 
+
+def flip_points(a):
+    a = np.array(a)
+    return np.flip(a, 1)
+
+
+def transform32(points, H, add=(0, 0)):
+    """Transform list of points [(x, y), ...]
+        
+        :return H * points.T() + add
+    """
+    points = np.float32(points)
+    return np.int32(cv2.perspectiveTransform(points.reshape(1, -1, 2), H).reshape(-1, 2) + add)

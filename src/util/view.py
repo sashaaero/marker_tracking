@@ -1,11 +1,13 @@
 import cv2
 import numpy as np
 
+import util
 
 COLOR_WHITE = (255, 255, 255)
 COLOR_RED = (0, 0, 255)
 COLOR_GREEN = (0, 255, 0)
 COLOR_BLUE = (255, 0, 0)
+COLOR_MAGENTA = (255, 0, 255)
 
 
 def capture_img(cam, size=(640, 480)):
@@ -51,8 +53,8 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
     match_copy = match.copy()
 
     if H is not None:
-        corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
-        corners = np.int32( cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2) + (w1, 0) )
+        corners = [[0, 0], [w1, 0], [w1, h1], [0, h1]]
+        corners = util.transform32(corners, H, (w1, 0))
         cv2.polylines(vis, [corners], True, (255, 255, 255))
 
     if status is None:
@@ -106,7 +108,7 @@ def anorm(a):
     return np.sqrt(anorm2(a))
 
 
-def explore_match_mouse(img1, img2, kp_pairs, win_name="Match exploration", status=None, H=None):
+def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", status=None, H=None):
     img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     h1, w1 = img1.shape[:2]
@@ -118,28 +120,31 @@ def explore_match_mouse(img1, img2, kp_pairs, win_name="Match exploration", stat
     vis0 = vis.copy()
 
     if H is not None:
-        corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
-        corners = np.int32( cv2.perspectiveTransform(corners.reshape(1, -1, 2), H).reshape(-1, 2) + (w1, 0) )
-        cv2.polylines(vis, [corners], True, (255, 255, 255))
+        corners0 = [[0, 0], [w1, 0], [w1, h1], [0, h1]]
+        corners = util.transform32(corners0, H, (w1, 0))
+        cv2.polylines(vis, [corners], True, util.COLOR_WHITE)
+        for (x, y), (x1, y1) in zip(corners, corners0):
+            cv2.line(vis, (x, y), (x1, y1), COLOR_WHITE, 1)
 
     if status is None:
-        status = np.ones(len(kp_pairs), np.bool_)
-    p1, p2 = [], []
-    for kpp in kp_pairs:
-        p1.append(np.int32(kpp[0]))
-        p2.append(np.int32(np.array(kpp[1]) + [0, w1]))
+        status = np.ones(len(kp_t), np.bool_)
 
-    green = (0, 255, 0)
-    red = (0, 0, 255)
-    white = (255, 255, 255)
-    kp_color = (51, 103, 236)
-    for (y1, x1), (y2, x2), inlier in zip(p1, p2, status):
+    p1, p2 = kp_t, kp_m + (w1, 0)
+    # for kpp in kp_pairs:
+    #     p1.append(np.int32(kpp[0]))
+    #     p2.append(np.int32(np.array(kpp[1]) + [0, w1]))
+
+    p3 = util.transform32(p1, H, (w1, 0))
+    p1, p2 = np.int32(p1), np.int32(p2)
+
+    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(p1, p2, p3, status):
         if inlier:
-            col = green
+            col = COLOR_GREEN
             cv2.circle(vis, (x1, y1), 2, col, -1)
             cv2.circle(vis, (x2, y2), 2, col, -1)
+            cv2.circle(vis, (x3, y3), 2, COLOR_MAGENTA, -1)
         else:
-            col = red
+            col = COLOR_RED
             r = 2
             thickness = 1
             cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
@@ -147,9 +152,10 @@ def explore_match_mouse(img1, img2, kp_pairs, win_name="Match exploration", stat
             cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
             cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
 
-    for (y1, x1), (y2, x2), inlier in zip(p1, p2, status):
+    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(p1, p2, p3, status):
         if inlier:
-            cv2.line(vis, (x1, y1), (x2, y2), green)
+            cv2.line(vis, (x1, y1), (x2, y2), COLOR_GREEN)
+            cv2.line(vis, (x2, y2), (x3, y3), COLOR_MAGENTA)
 
     cv2.imshow(win_name, vis)
 
@@ -157,7 +163,7 @@ def explore_match_mouse(img1, img2, kp_pairs, win_name="Match exploration", stat
         if not (flags & cv2.EVENT_FLAG_LBUTTON):
             return
 
-        mouse_pos = (y, x)
+        mouse_pos = (x, y) #(y, x)
 
         cur_vis = vis0.copy()
 
@@ -169,13 +175,13 @@ def explore_match_mouse(img1, img2, kp_pairs, win_name="Match exploration", stat
         idxs = np.where(m)[0]
         kp1s, kp2s = [], []
         for i in idxs:
-            (y1, x1), (y2, x2) = p1[i], p2[i]
-            col = green if status[i] else red
+            (y1, x1), (y2, x2), (y3, x3) = p1[i], p2[i], p3[i]
+            col = COLOR_GREEN if status[i] else COLOR_RED
             cv2.line(cur_vis, (x1, y1), (x2, y2), col)
 
-            kp1, kp2 = kp_pairs[i]
-            kp1s.append(kp1)
-            kp2s.append(kp2)
+            # kp1, kp2 = kp_pairs[i]
+            # kp1s.append(p1[i])
+            # kp2s.append(p2[i])
 
         #cur_vis = cv2.drawKeypoints(cur_vis, kp1s, None, flags=4, color=kp_color)
         #cur_vis[:, w1:] = cv2.drawKeypoints(cur_vis[:, w1:], kp2s, None, flags=4, color=kp_color)
