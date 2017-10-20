@@ -57,10 +57,8 @@ class Fern:
         """ Calculates feature function on all kp_pairs and generates binary number according to article"""
         result = 0
 
-        for p1, p2 in self.kp_pairs:
-            result += 0 if (sample[p1[1]][p1[0]] < sample[p2[1]][p2[0]]) else 1
-
-            result *= 2
+        for (y1, x1), (y2, x2) in self.kp_pairs:
+            result = (result + (0 if (sample[y1, x1] < sample[y2, x2]) else 1)) * 2
 
         return result
 
@@ -317,20 +315,15 @@ class FernDetector:
 
     def _generate_patch_class(self, img, corner):
         """ generate patch transformations """
-        #size = self._patch_size[1]*4, self._patch_size[0]*4
+
         patch = self._generate_patch(img, corner)
         size = np.shape(patch)[:2]
-        cx, cy = size[0] // 2, size[1] // 2
-
-        # ph, pw = self._patch_size
-        # x0 = int(cx - pw // 2) - 1
-        # y0 = int(cy - ph // 2) - 1
 
         for _, img in FernDetector._generate_affine_deformations(patch):
-            yield img #[y0:y0 + ph, x0:x0 + pw]
+            yield img
 
     @staticmethod
-    def _generate_affine_deformations(img, theta_step=10, deformations=20):
+    def _generate_affine_deformations(img, theta_step=5, deformations=20):
         H, W = np.shape(img)[:2]
 
         center = np.float32(H / 2.0), np.float32(W / 2.0)
@@ -346,8 +339,8 @@ class FernDetector:
             Rt = rotation_matrices[theta]
             N = deformations
             r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.random.uniform(0.9, 1.1, N)
-            r_lambda2 = np.random.uniform(0.9, 1.1, N)
+            r_lambda1 = np.random.uniform(0.6, 1.5, N)
+            r_lambda2 = np.random.uniform(0.6, 1.5, N)
             r_noise_ratio = np.random.uniform(0, 0.1, N)
 
             for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):

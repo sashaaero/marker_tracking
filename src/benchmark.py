@@ -26,21 +26,19 @@ def benchmark_dataset(dataset, explore=True):
 
 
 def benchmark_sample():
-    cam = cv2.VideoCapture("samples/test.avi")
+    cam = cv2.VideoCapture("samples/test_ricotta.avi")
 
-    sample = cv2.imread("samples/sample.jpg")
+    sample = cv2.imread("samples/sample_ricotta.jpg")
 
     detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
 
     detector.draw_learned_ferns()
 
-
     detection_box, _ = detector.detect(sample)
     if len(detection_box) == 0:
         print("Homography not found")
 
-    examine_detection(detector, sample, sample, [], detection_box, explore=True)
-
+    # examine_detection(detector, sample, sample, [], detection_box, explore=True)
 
     while True:
         ret, img = cam.read()
@@ -71,8 +69,9 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
     util.wait_for_key()
 
+
 if __name__ == "__main__":
     random.seed(1234)
-    # benchmark_sample()
-    benchmark_dataset("ClifBar")
+    benchmark_sample()
+    # benchmark_dataset("ClifBar")
     # benchmark_dataset("Box")
