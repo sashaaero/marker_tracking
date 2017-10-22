@@ -204,6 +204,8 @@ class FernDetector:
                               np.max(self._fern_p[fern_idx, cls_idx, :]))
                       )
 
+        self._fern_p = np.log(self._fern_p)
+
         print("Training complete!")
 
     def match(self, image):
@@ -218,24 +220,20 @@ class FernDetector:
         key_points_matched = []
         key_points_pairs = []
 
-        most_probable_classes = set()
-
         for corner in iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count, ))
 
             patch = self._generate_patch(image, corner)
             for fern_idx, fern in enumerate(self._ferns):
                 k = fern.calculate(patch)
-                probs += np.log(self._fern_p[fern_idx, :, k])
+                probs += self._fern_p[fern_idx, :, k]
 
             most_probable_class = np.argmax(probs)
-            most_probable_classes.add(most_probable_class)
+            best_key_point = self.key_points[most_probable_class]
 
-            #print("C: {}, p={}".format(corner, np.exp(np.max(probs))))
-
-            key_points_trained.append(self.key_points[most_probable_class])
+            key_points_trained.append(best_key_point)
             key_points_matched.append(corner)
-            key_points_pairs.append((self.key_points[most_probable_class], corner))
+            key_points_pairs.append((best_key_point, corner))
 
         return util.flip_points(key_points_trained), \
                util.flip_points(key_points_matched), \
@@ -323,7 +321,7 @@ class FernDetector:
             yield img
 
     @staticmethod
-    def _generate_affine_deformations(img, theta_step=5, deformations=20):
+    def _generate_affine_deformations(img, theta_step=3, deformations=20):
         H, W = np.shape(img)[:2]
 
         center = np.float32(H / 2.0), np.float32(W / 2.0)
@@ -358,7 +356,7 @@ class FernDetector:
 
                 # add gaussian noise
                 noise = np.uint8(np.random.normal(0, 25, (W, H)))
-                blurred = warped #cv2.GaussianBlur(warped, (7, 7), 2)
+                blurred = warped # cv2.GaussianBlur(warped, (7, 7), 25)
 
                 noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 

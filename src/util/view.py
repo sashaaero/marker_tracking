@@ -163,7 +163,7 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
         if not (flags & cv2.EVENT_FLAG_LBUTTON):
             return
 
-        mouse_pos = (x, y) #(y, x)
+        mouse_pos = (x, y)
 
         cur_vis = vis0.copy()
 
@@ -173,18 +173,12 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
         r = 16
         m = (anorm(np.array(p1) - mouse_pos) < r) | (anorm(np.array(p2) - mouse_pos) < r)
         idxs = np.where(m)[0]
-        kp1s, kp2s = [], []
+
         for i in idxs:
-            (y1, x1), (y2, x2), (y3, x3) = p1[i], p2[i], p3[i]
+            (x1, y1), (x2, y2), (x3, y3) = p1[i], p2[i], p3[i]
             col = COLOR_GREEN if status[i] else COLOR_RED
             cv2.line(cur_vis, (x1, y1), (x2, y2), col)
-
-            # kp1, kp2 = kp_pairs[i]
-            # kp1s.append(p1[i])
-            # kp2s.append(p2[i])
-
-        #cur_vis = cv2.drawKeypoints(cur_vis, kp1s, None, flags=4, color=kp_color)
-        #cur_vis[:, w1:] = cv2.drawKeypoints(cur_vis[:, w1:], kp2s, None, flags=4, color=kp_color)
+            cv2.line(cur_vis, (x2, y2), (x3, y3), COLOR_MAGENTA)
 
         cv2.imshow(win_name, cur_vis)
 
