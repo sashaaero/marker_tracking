@@ -185,3 +185,6 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
     cv2.setMouseCallback(win_name, onmouse)
     return vis
 
+
+def draw_match_bounds(img, H):
+    pass

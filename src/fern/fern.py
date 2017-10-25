@@ -4,48 +4,11 @@ from collections import defaultdict, namedtuple
 import cv2
 import numpy as np
 
-import util
-from asift.common import Timer, iter_timer
 import matplotlib.pyplot as plt
 
-from util import wait_for_key, key_pressed, explore_match, mult, COLOR_WHITE
-from webcam import draw_match_bounds
+import util
 
 Z = 40
-
-
-class Collector:
-    def __init__(self, point):
-        self._point_sum = np.array(point)
-        self._count = 1
-
-    def push(self, new_point):
-        new_point = np.array(new_point)
-        assert new_point.shape[0] == 2
-
-        self._point_sum += new_point
-        self._count += 1
-
-    def dist2(self, point):
-        point = np.array(point)
-        assert point.shape[0] == 2
-
-        return np.sum((self._point_sum - point) ** 2)
-
-    @property
-    def x(self):
-        return self._point_sum[1] / self._count
-
-    @property
-    def y(self):
-        return self._point_sum[0] / self._count
-
-    @property
-    def count(self):
-        return self._count
-
-    def __str__(self):
-        return "Collector(x:{}, y:{}, cnt:{})".format(self.x, self.y, self._count)
 
 
 class Fern:
@@ -109,63 +72,17 @@ class FernDetector:
 
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
-    def _get_stable_corners(self, train_img, max_corners=100):
-        for c in self._get_corners(train_img, max_corners):
-            yield np.int32(c)
-
-        return
-
-        H, W = np.shape(train_img)[:2]
-
-        def find_collector(collectors, point, radius=2):
-            radius2 = radius ** 2
-
-            min_c = None
-            for c in collectors:
-                dist = c.dist2(point)
-                if dist < radius2:
-                    min_c = c
-                    radius2 = dist
-
-            return min_c
-
-        collectors = []
-        for R_inv, img in FernDetector._generate_affine_deformations(train_img, theta_step=36, deformations=3):
-            corners = np.array([list(self._get_corners(img, 500))])
-
-            (corners_inv, ) = cv2.transform(corners, R_inv)
-
-            for corner in corners_inv:
-                corner[1], corner[0] = corner[0], corner[1]
-                cy, cx = corner
-
-                if not (0 <= cy < H and 0 <= cx < W):
-                    continue
-
-                # assert 0 <= cy < H and 0 <= cx < W, "(cy, cx)=({}, {}) (H, W)=({}, {})".format(cy, cx, H, W)
-
-                collector = find_collector(collectors, corner)
-
-                if collector is None:
-                    collectors.append(Collector(corner))
-                else:
-                    collector.push(corner)
-
-        collectors = sorted(collectors, key=lambda c: -c.count)
-
-        for c in collectors[:max_corners]:
-            yield (int(c.y), int(c.x))
-
     def _train(self, train_img):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
         H, W = np.shape(img_gray)[:2]
 
-        corners = list(self._get_stable_corners(img_gray, self._max_train_corners))
+        corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
+
+        img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 
         img1 = img_gray.copy()
-        for corner in corners:
-            y, x = corner
-            cv2.circle(img1, (x, y), 3, COLOR_WHITE, -1)
+        for (y, x) in corners:
+            cv2.circle(img1, (x, y), 3, util.COLOR_WHITE, -1)
 
         cv2.imshow("corners", img1)
 
@@ -176,7 +93,7 @@ class FernDetector:
         self.key_points = []
 
         title = "Training {} classes".format(self._classes_count)
-        for class_idx, corner in enumerate(iter_timer(corners, title=title, print_iterations=True)):
+        for class_idx, corner in enumerate(util.iter_timer(corners, title=title, print_iterations=True)):
             self.key_points.append(corner)
 
             cy, cx = corner
@@ -193,7 +110,7 @@ class FernDetector:
 
         Nr = 1
 
-        for fern_idx in iter_timer(range(len(self._ferns)), title="Calculating probs"):
+        for fern_idx in util.iter_timer(range(len(self._ferns)), title="Calculating probs"):
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, cls_idx, :])
                 self._fern_p[fern_idx, cls_idx, :] += Nr
@@ -213,15 +130,17 @@ class FernDetector:
         if dims == 3:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        with Timer("track features"):
-            corners = self._get_corners(image, self._max_match_corners)
+        with util.Timer("track features"):
+            corners = util.get_corners(image, self._max_match_corners)
+
+        image = cv2.GaussianBlur(image, (7, 7), 25)
 
         key_points_trained = []
         key_points_matched = []
         key_points_pairs = []
 
-        for corner in iter_timer(corners, title="Matching corners", print_iterations=False):
-            probs = np.zeros((self._classes_count, ))
+        for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):
+            probs = np.zeros((self._classes_count,))
 
             patch = self._generate_patch(image, corner)
             for fern_idx, fern in enumerate(self._ferns):
@@ -256,8 +175,8 @@ class FernDetector:
     def _draw_patch_class(self, patches, cls_idx):
         w, h = self._patch_size
 
-        W = (w+5) * 10
-        H = (h+5) * (len(patches) // 10 + 1)
+        W = (w + 5) * 10
+        H = (h + 5) * (len(patches) // 10 + 1)
 
         img = np.zeros((W, H))
         for idx, patch in enumerate(patches):
@@ -298,9 +217,6 @@ class FernDetector:
             # fast way
             return img[int(y) - ph2:int(y) + ph2, int(x) - pw2:int(x) + pw2]
 
-
-
-
         assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
 
         y, x = int(y) + h, int(x) + w
@@ -315,82 +231,8 @@ class FernDetector:
         """ generate patch transformations """
 
         patch = self._generate_patch(img, corner)
-        size = np.shape(patch)[:2]
-
-        for _, img in FernDetector._generate_affine_deformations(patch):
+        for _, img in util.generate_deformations(patch):
             yield img
-
-    @staticmethod
-    def _generate_affine_deformations(img, theta_step=3, deformations=20):
-        H, W = np.shape(img)[:2]
-
-        center = np.float32(H / 2.0), np.float32(W / 2.0)
-
-        #cv2.line(img, center, (0, 0), 255, 1)
-
-        rotation_matrices = [
-            cv2.getRotationMatrix2D((center[1], center[0]), theta, 1.0)
-            for theta in range(0, 361)
-        ]
-
-        for theta in range(0, 360, theta_step):
-            Rt = rotation_matrices[theta]
-            N = deformations
-            r_phi = np.random.randint(0, 360, N)
-            r_lambda1 = np.random.uniform(0.6, 1.5, N)
-            r_lambda2 = np.random.uniform(0.6, 1.5, N)
-            r_noise_ratio = np.random.uniform(0, 0.1, N)
-
-            for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
-                Rp  = rotation_matrices[phi]
-                Rp1 = rotation_matrices[360 - phi]
-
-                Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
-
-                Rz = mult(Rp, mult(Rl, Rp1))
-
-                R = mult(Rt, Rz)
-                R_inv = cv2.invertAffineTransform(R)
-
-                warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_REFLECT101)
-
-                # add gaussian noise
-                noise = np.uint8(np.random.normal(0, 25, (W, H)))
-                blurred = warped # cv2.GaussianBlur(warped, (7, 7), 25)
-
-                noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
-
-                yield R_inv, noised
-
-    def _get_corners(self, img, max_corners):
-        corners = cv2.goodFeaturesToTrack(img, maxCorners=max_corners, qualityLevel=0.01, minDistance=8)
-
-        return ((y, x) for ((x, y), ) in corners)
-
-
-        img = np.float32(img)
-        dst = cv2.cornerHarris(img, 2, 3, 0.04)
-
-
-        ret, dst = cv2.threshold(dst, 0.01*dst.max(), 255, 0)
-        dst = np.uint8(dst)
-
-        ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-        corners = cv2.cornerSubPix(img, np.float32(centroids), (5, 5), (-1, -1), criteria)
-
-        return corners[:Z]
-
-        # h, w = np.shape(dst)
-        #
-        # result = []
-        # threshold = dst.max() * 0.01
-        # for y in range(h):
-        #     for x in range(w):
-        #         if dst[y, x] > threshold:
-        #             result.append(((x, y), ))
-        #
-        # return result
 
     def draw_learned_ferns(self):
         w, h = self._patch_size
@@ -406,7 +248,7 @@ class FernDetector:
 
         mask = 255 - mask
 
-        for cls_idx in iter_timer(range(self._classes_count), title="Drawing ferns"):
+        for cls_idx in util.iter_timer(range(self._classes_count), title="Drawing ferns"):
             img = np.zeros(((1 + (ferns_count // 10)) * (h + 5), (w + 5) * 10)) * 128
 
             for fern_idx, fern in enumerate(self._ferns):
@@ -423,7 +265,7 @@ class FernDetector:
                 # mask = mask + 128
                 # _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY_INV)
 
-                img[y0:y0 + h, x0: x0 + w] = sample # cv2.inpaint(sample, mask, 2, cv2.INPAINT_TELEA)
+                img[y0:y0 + h, x0: x0 + w] = sample  # cv2.inpaint(sample, mask, 2, cv2.INPAINT_TELEA)
 
                 # for k in range(K):
                 #     p = self._fern_p[fern_idx, k, cls_idx]
@@ -437,7 +279,9 @@ class FernDetector:
 
         for cls_idx in range(self._classes_count):
             f, axes_arr = plt.subplots(ferns_count,
-                                       figsize=(6, 1.5*ferns_count), sharey=True, sharex=True)
+                                       figsize=(6, 1.5 * ferns_count),
+                                       sharey=True,
+                                       sharex=True)
 
             for fern_idx, fern in enumerate(self._ferns):
                 axes_arr[fern_idx].plot(x, self._fern_p[fern_idx, :, cls_idx])
@@ -447,53 +291,3 @@ class FernDetector:
             plt.savefig("{}plot_cls{}.png".format(path, cls_idx), dpi=100)
             plt.close(f)
         print("All graphs were drawn")
-
-
-if __name__ == "__main__":
-    orig = cv2.imread("../samples/sample_ricotta.jpg")
-    orig2 = cv2.flip(orig, 1)
-
-    detector = FernDetector(orig)
-
-    detector.draw_learned_ferns()
-
-    kp1, kp2, kp_p = detector.match(orig)
-
-    H, status = cv2.findHomography(kp1, kp2, cv2.RANSAC, 5.0)
-    explore_match(orig, orig, kp_p, status=status, H=H)
-
-    if H is not None:
-        draw_match_bounds(orig.shape, orig, H)
-
-    # cv2.imshow("orig", cv2.resize(orig, (1024, 768)))
-
-    wait_for_key()
-    cv2.destroyAllWindows()
-
-
-    cam = cv2.VideoCapture("../samples/test_ricotta.avi")
-    while True:
-        retval, img = cam.read()
-
-        with Timer("matching"):
-            kp1, kp2, kp_p = detector.match(img)
-
-        # wait_for_key(13)
-
-        with Timer("homography"):
-            H, status = cv2.findHomography(kp1, kp2, cv2.RANSAC, 5.0)
-
-        explore_match(orig, img, kp_pairs=kp_p, status=status, H=H)
-
-        if H is not None:
-            draw_match_bounds(img.shape, img, H)
-        else:
-            print("None :(")
-
-        img = cv2.resize(img, (640, 480))
-        cv2.imshow("press any key to continue", img)
-
-        wait_for_key()
-
-        if key_pressed(27):
-            break  # esc to quit
