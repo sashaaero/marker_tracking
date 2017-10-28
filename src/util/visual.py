@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from util import iter_timer, flip_points, mult
+import operator
+from util import iter_timer, flip_points, mult, Timer, wait_for_key
 
 
 def get_corners(img, max_corners):
@@ -11,40 +12,73 @@ def get_corners(img, max_corners):
 def get_stable_corners(train_img, max_corners=100):
     H, W = np.shape(train_img)[:2]
 
-    def find_collector(collectors, point, radius=3):
-        radius2 = radius ** 2
-        point = np.array(point)
+    CORNER_CNT = 500
 
-        best_collector = None
-        for collector in collectors:
-            dist = collector.dist2(point)
-            if dist <= radius2:
-                best_collector = collector
-                radius2 = dist
+    corners = list(get_corners(train_img, CORNER_CNT))
 
-        return best_collector
+    cv2.imshow("original", train_img)
 
-    corners = list(get_corners(train_img, 500))
-    for R_inv, img in iter_timer(generate_deformations(train_img, theta_step=36, deformations=3), "Corner generation"):
-        new_corners = np.array([list(get_corners(img, 500))])
+    with Timer("Corner generation"):
+        for R_inv, img in generate_deformations(train_img, theta_step=36, deformations=3):
+            new_corners = np.array(list(get_corners(img, CORNER_CNT)), dtype=np.float32)
 
-        (corners_inv,) = cv2.transform(new_corners, R_inv)
-        corners_inv = np.array(flip_points(corners_inv), dtype=int)
+            # y,x --> x,y
+            new_corners = flip_points(new_corners)
 
-        corners.extend(corners_inv)
+            t = [[1]] * len(new_corners)
 
-    collectors = {}
-    for cx, cy in iter_timer(corners, "Stable corner detection"):
-        corner = int(cx), int(cy)
+            new_corners = np.transpose(np.hstack((new_corners, t)))
+
+            corners_inv = np.transpose(np.dot(R_inv, new_corners)) #cv2.transform(new_corners, R_inv)
+            # corners_inv = flip_points(corners_inv)
+
+            corners.extend(corners_inv)
+
+    corners = sorted(corners, key=lambda p: p[0])
+
+    collectors = []
+
+    def find_best_collector(point):
+        threshold = 2 * 2
+        x, y = point
+
+        l = len(collectors)
+
+        for idx in reversed(range(l)):
+            cx, cy, _ = collectors[idx]
+
+            xdist = abs(cx - x)
+            dist2 = xdist ** 2 + (cy - y) ** 2
+            if dist2 <= threshold:
+                return idx
+
+            # collectors are sorted by x
+            # if xdist > threshold then for all remaining collectors dist2 > threshold
+            if xdist > threshold:
+                break
+
+        return None
+
+    skip_count = 0
+
+    for cx, cy in iter_timer(corners, "Stable corner detection", print_iterations=False):
         if not (0 <= cy < H and 0 <= cx < W):
+            skip_count += 1
             continue
 
-        collectors[corner] = collectors.get(corner, 0) + 1
+        best_collector = find_best_collector((cx, cy))
+        if best_collector is None:
+            collectors.append((cx, cy, 1))
+        else:
+            x, y, cnt = collectors[best_collector]
+            collectors[best_collector] = ((x * cnt + cx) / (cnt + 1), (y * cnt + cy) / (cnt + 1), cnt + 1)
 
-    collectors = sorted(collectors.items(), key=lambda c: -c[1])
+    collectors = sorted(collectors, key=lambda c: -c[2])
 
-    for (x, y), _ in collectors[:max_corners]:
-        yield y, x
+    print("Skipped {}".format(skip_count))
+
+    for x, y, _ in collectors[:max_corners]:
+        yield int(y), int(x)
 
 
 def generate_deformations(img, theta_step=1, deformations=30):

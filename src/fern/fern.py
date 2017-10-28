@@ -1,12 +1,11 @@
-import random
-from collections import defaultdict, namedtuple
-
 import cv2
 import numpy as np
-
 import matplotlib.pyplot as plt
-
+import random
 import util
+
+from collections import defaultdict
+
 
 Z = 40
 
@@ -81,10 +80,11 @@ class FernDetector:
         img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 
         img1 = img_gray.copy()
-        for (y, x) in corners:
+        for y, x in corners:
             cv2.circle(img1, (x, y), 3, util.COLOR_WHITE, -1)
 
         cv2.imshow("corners", img1)
+        util.wait_for_key()
 
         self._classes_count = len(corners)
 

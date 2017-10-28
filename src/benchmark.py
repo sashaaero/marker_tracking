@@ -27,11 +27,9 @@ def benchmark_dataset(dataset, explore=True):
 
 def benchmark_sample():
     cam = cv2.VideoCapture("samples/test_ricotta.avi")
-
     sample = cv2.imread("samples/sample_ricotta.jpg")
 
     detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
-
     detector.draw_learned_ferns()
 
     detection_box, _ = detector.detect(sample)
