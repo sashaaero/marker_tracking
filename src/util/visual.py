@@ -42,9 +42,7 @@ def get_stable_corners(train_img, max_corners=100):
         threshold = 2 * 2
         x, y = point
 
-        l = len(collectors)
-
-        for idx in reversed(range(l)):
+        for idx in reversed(range(len(collectors))):
             cx, cy, _ = collectors[idx]
 
             xdist = abs(cx - x)
@@ -119,3 +117,50 @@ def generate_deformations(img, theta_step=1, deformations=30):
             noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
             yield R_inv, noised
+
+
+def generate_patch(img, center, size):
+    h, w = np.shape(img)
+    h, w = int(h), int(w)
+
+    ph, pw = size
+
+    assert 0 < pw <= w and 0 < ph <= h
+
+    ph2, pw2 = ph // 2, pw // 2
+    y, x = center
+
+    if pw2 <= x and x + pw2 < w and ph2 <= y and y + ph2 <= h:
+        # fast way
+        return img[int(y) - ph2:int(y) + ph2, int(x) - pw2:int(x) + pw2]
+
+    assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
+
+    y, x = int(y) + h, int(x) + w
+    x0 = x - pw2
+    y0 = y - ph2
+
+    img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
+
+    return img_extended[y0:y0 + ph, x0:x0 + pw]
+
+
+def generate_patch_class(img, corner, patch_size):
+    """ generate patch transformations """
+
+    patch = generate_patch(img, corner, patch_size)
+    for _, img in generate_deformations(patch):
+        yield img
+
+
+def generate_key_point_pairs(patch_size, n=300):
+    pw, ph = patch_size
+
+    xs0 = np.random.random_integers(1, pw - 2, n)
+    ys0 = np.random.random_integers(1, ph - 2, n)
+
+    xs1 = np.random.random_integers(1, pw - 2, n)
+    ys1 = np.random.random_integers(1, ph - 2, n)
+
+    for x0, y0, x1, y1 in zip(xs0, ys0, xs1, ys1):
+        yield (y0, x0), (y1, x1)

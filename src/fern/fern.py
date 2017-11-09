@@ -7,9 +7,6 @@ import util
 from collections import defaultdict
 
 
-Z = 40
-
-
 class Fern:
     def __init__(self, size, key_point_pairs):
         self._size = size
@@ -46,7 +43,7 @@ class FernDetector:
         self._train(sample)
 
     def _init_ferns(self, fern_est_size=11):
-        kp_pairs = list(self._generate_key_point_pairs())
+        kp_pairs = list(util.generate_key_point_pairs(self._patch_size))
         n = len(kp_pairs)
 
         # maps key_point[i] to fern[fern_indices[i]]
@@ -99,7 +96,7 @@ class FernDetector:
             cy, cx = corner
             assert 0 <= cy <= H and 0 <= cx <= W, "(cy, cx)=({}, {}) (H, W)=({}, {})".format(cy, cx, H, W)
 
-            patch_class = list(self._generate_patch_class(img_gray, corner))
+            patch_class = list(util.generate_patch_class(img_gray, corner, self._patch_size))
             self._draw_patch_class(patch_class, class_idx)
 
             for patch in patch_class:
@@ -142,7 +139,7 @@ class FernDetector:
         for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count,))
 
-            patch = self._generate_patch(image, corner)
+            patch = util.generate_patch(image, corner, self._patch_size)
             for fern_idx, fern in enumerate(self._ferns):
                 k = fern.calculate(patch)
                 probs += self._fern_p[fern_idx, :, k]
@@ -186,53 +183,6 @@ class FernDetector:
             img[y:y + h, x: x + w] = patch
 
         cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
-
-    def _generate_key_point_pairs(self, n=300):
-        pw, ph = self._patch_size
-
-        xs0 = np.random.random_integers(1, pw - 2, n)
-        ys0 = np.random.random_integers(1, ph - 2, n)
-
-        xs1 = np.random.random_integers(1, pw - 2, n)
-        ys1 = np.random.random_integers(1, ph - 2, n)
-
-        for x0, y0, x1, y1 in zip(xs0, ys0, xs1, ys1):
-            yield (y0, x0), (y1, x1)
-
-    def _generate_patch(self, img, center, size=None):
-        h, w = np.shape(img)
-        h, w = int(h), int(w)
-
-        if size is None:
-            ph, pw = self._patch_size
-        else:
-            ph, pw = size
-
-        assert 0 < pw <= w and 0 < ph <= h
-
-        ph2, pw2 = ph // 2, pw // 2
-        y, x = center
-
-        if pw2 <= x and x + pw2 < w and ph2 <= y and y + ph2 <= h:
-            # fast way
-            return img[int(y) - ph2:int(y) + ph2, int(x) - pw2:int(x) + pw2]
-
-        assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
-
-        y, x = int(y) + h, int(x) + w
-        x0 = x - pw2
-        y0 = y - ph2
-
-        img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
-
-        return img_extended[y0:y0 + ph, x0:x0 + pw]
-
-    def _generate_patch_class(self, img, corner):
-        """ generate patch transformations """
-
-        patch = self._generate_patch(img, corner)
-        for _, img in util.generate_deformations(patch):
-            yield img
 
     def draw_learned_ferns(self):
         w, h = self._patch_size
