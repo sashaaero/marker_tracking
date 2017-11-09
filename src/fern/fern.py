@@ -1,3 +1,5 @@
+from typing import IO
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -242,3 +244,13 @@ class FernDetector:
             plt.savefig("{}plot_cls{}.png".format(path, cls_idx), dpi=100)
             plt.close(f)
         print("All graphs were drawn")
+
+    def serialize(self, file: IO):
+        file.write(str(len(self._ferns)))
+        lines = [
+            " ".join((" ".join(y2, x2, y1, x1) for (y2, x2), (y1, x1) in fern.kp_pairs))
+            for fern in self._ferns
+        ]
+        file.writelines(lines)
+
+

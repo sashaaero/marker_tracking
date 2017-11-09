@@ -33,13 +33,10 @@ def benchmark_sample():
 
     serialization_path = "samples/ricotta_detector.dat"
 
-    if os.path.exists(serialization_path):
-        with open(serialization_path, 'r') as data_file:
-            detector = pickle.load(data_file)
-    else:
-        detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
-        with open(serialization_path, 'w') as data_file:
-            pickle.dump(detector, data_file)
+    detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
+
+    with open(serialization_path, 'w') as f:
+        detector.serialize(f)
 
     detector.draw_learned_ferns()
 
