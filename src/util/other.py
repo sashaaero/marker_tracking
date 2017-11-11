@@ -1,5 +1,6 @@
-import numpy as np
 import cv2
+import numpy as np
+from itertools import chain
 
 
 def mult(m1, m2):
@@ -18,8 +19,11 @@ def flip_points(a):
 
 def transform32(points, H, add=(0, 0)):
     """Transform list of points [(x, y), ...]
-        
         :return H * points.T() + add
     """
     points = np.float32(points)
     return np.int32(cv2.perspectiveTransform(points.reshape(1, -1, 2), H).reshape(-1, 2) + add)
+
+
+def flatmap2(func, *iterable):
+    return map(func, chain(*chain(*chain(*iterable))))

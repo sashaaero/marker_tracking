@@ -1,9 +1,9 @@
 from typing import IO
 
 import cv2
+from itertools import chain
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle
 import random
 import util
 
@@ -35,6 +35,12 @@ class Fern:
         for ((y1, x1), (y2, x2)), level in zip(self.kp_pairs, levels):
             sample[y1, x1] = 255 * level
             sample[y2, x2] = 255 * (1 - level)
+
+    def serialize(self, file: IO):
+        file.write("{},{}\n".format(
+            len(self.kp_pairs),
+            ",".join(util.flatmap2(str, self.kp_pairs))
+        ))
 
 
 class FernDetector:
@@ -246,11 +252,6 @@ class FernDetector:
         print("All graphs were drawn")
 
     def serialize(self, file: IO):
-        file.write(str(len(self._ferns)))
-        lines = [
-            " ".join((" ".join(y2, x2, y1, x1) for (y2, x2), (y1, x1) in fern.kp_pairs))
-            for fern in self._ferns
-        ]
-        file.writelines(lines)
-
-
+        file.write("{}\n".format(len(self._ferns)))
+        for fern in self._ferns:
+            fern.serialize(file)
