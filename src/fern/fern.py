@@ -252,6 +252,21 @@ class FernDetector:
         print("All graphs were drawn")
 
     def serialize(self, file: IO):
+        file.write("1\n")  # version
         file.write("{}\n".format(len(self._ferns)))
+        file.write("{},{}\n".format(*self._patch_size))
         for fern in self._ferns:
             fern.serialize(file)
+
+        F, C, K = np.shape(self._fern_p)
+        assert F == len(self._ferns)
+        assert C == self._classes_count
+
+        file.write("{},{}\n".format(self._max_train_corners, self._max_match_corners))
+        file.write("{},{},{}\n".format(F, C, K))
+
+        for f in range(F):
+            for c in range(C):
+                file.write(
+                    (",".join(map(str, self._fern_p[f, c, :]))) + "\n"
+                )
