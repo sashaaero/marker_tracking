@@ -1,7 +1,6 @@
 from typing import IO
 
 import cv2
-from itertools import chain
 import numpy as np
 import matplotlib.pyplot as plt
 import random
@@ -42,14 +41,44 @@ class Fern:
             ",".join(util.flatmap2(str, self.kp_pairs))
         ))
 
+    @staticmethod
+    def deserialize(file: IO):
+        cnt, *points = file.readline().strip().split(",")
+        cnt = int(cnt)
+        points = list(map(int, points))
+        assert len(points) == cnt * 4, "Can't deserialize Fern. count = {}, coords = {}"
+
+        return Fern(cnt, list(util.grouper(util.grouper(points, 2), 2)))
+
 
 class FernDetector:
-    def __init__(self, sample, patch_size=(16, 16), max_train_corners=40, max_match_corners=200):
+    @staticmethod
+    def train(sample, patch_size=(16, 16), max_train_corners=40, max_match_corners=200):
+        fd = FernDetector(patch_size=patch_size,
+                          max_train_corners=max_train_corners,
+                          max_match_corners=max_match_corners)
+        fd._init_ferns()
+        fd._train(sample)
+
+        return fd
+
+    def __init__(self,
+                 patch_size=(16, 16),
+                 max_train_corners=40,
+                 max_match_corners=200,
+                 ferns=None,
+                 ferns_p=None,
+                 classes_cnt=1,
+                 key_points=None,
+                 fern_bits=None):
         self._patch_size = patch_size
         self._max_train_corners = max_train_corners
         self._max_match_corners = max_match_corners
-        self._init_ferns()
-        self._train(sample)
+        self._ferns = ferns
+        self._fern_p = ferns_p
+        self._classes_count = classes_cnt
+        self._S = fern_bits
+        self.key_points = key_points
 
     def _init_ferns(self, fern_est_size=11):
         kp_pairs = list(util.generate_key_point_pairs(self._patch_size))
@@ -259,10 +288,8 @@ class FernDetector:
             fern.serialize(file)
 
         F, C, K = np.shape(self._fern_p)
-        assert F == len(self._ferns)
-        assert C == self._classes_count
 
-        file.write("{},{}\n".format(self._max_train_corners, self._max_match_corners))
+        file.write("{},{},{}\n".format(self._S, self._max_train_corners, self._max_match_corners))
         file.write("{},{},{}\n".format(F, C, K))
 
         for f in range(F):
@@ -270,3 +297,40 @@ class FernDetector:
                 file.write(
                     (",".join(map(str, self._fern_p[f, c, :]))) + "\n"
                 )
+
+        file.write(",".join(util.flatmap(str, self.key_points)) + "\n")
+
+    @staticmethod
+    def deserialize(file: IO):
+        version = int(file.readline().strip())
+        assert version == 1, "Incorrect version of model. Expected 1, found {}".format(version)
+
+        num_ferns = int(file.readline().strip())
+        ph, pw = map(int, file.readline().strip().split(","))
+
+        with util.Timer("Deserializing ferns"):
+            ferns = [Fern.deserialize(file) for _ in range(num_ferns)]
+
+        fern_bits, max_train, max_match = map(int, file.readline().strip().split(","))
+
+        with util.Timer("Deserializing fern_p"):
+            F, C, K = map(int, file.readline().strip().split(","))
+            fern_p = np.zeros((F, C, K), dtype=float)
+            for fern_idx in range(F):
+                for class_idx in range(C):
+                    line = list(map(float, file.readline().strip().split(",")))
+                    fern_p[fern_idx, class_idx, :] = line
+
+        line = file.readline().strip().split(",")
+        key_points = list(util.grouper(map(int, line), 2))
+
+        return FernDetector(
+            patch_size=(ph, pw),
+            max_train_corners=max_train,
+            max_match_corners=max_match,
+            ferns=ferns,
+            ferns_p=fern_p,
+            classes_cnt=C,
+            key_points=key_points,
+            fern_bits=fern_bits
+        )

@@ -27,16 +27,21 @@ def benchmark_dataset(dataset, explore=True):
         examine_detection(detector, sample, img, truth_box, detection_box, explore=explore)
 
 
-def benchmark_sample():
+def benchmark_sample(deserialize=False):
     cam = cv2.VideoCapture("samples/test_ricotta.avi")
     sample = cv2.imread("samples/sample_ricotta.jpg")
 
     serialization_path = "samples/ricotta_detector.dat"
 
-    detector = fern.FernDetector(sample, max_train_corners=50, max_match_corners=500)
+    if not deserialize:
+        detector = fern.FernDetector.train(sample, max_train_corners=50, max_match_corners=500)
 
-    with open(serialization_path, 'w') as f:
-        detector.serialize(f)
+        with open(serialization_path, 'w') as f:
+            detector.serialize(f)
+
+    else:
+        with open(serialization_path, 'r') as f:
+            detector = fern.FernDetector.deserialize(f)
 
     detector.draw_learned_ferns()
 
@@ -78,6 +83,7 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
 if __name__ == "__main__":
     random.seed(1234)
-    benchmark_sample()
+    # benchmark_sample()
+    benchmark_sample(deserialize=True)
     # benchmark_dataset("ClifBar")
     # benchmark_dataset("Box")

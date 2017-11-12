@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from itertools import chain
+from itertools import chain, zip_longest
 
 
 def mult(m1, m2):
@@ -25,5 +25,16 @@ def transform32(points, H, add=(0, 0)):
     return np.int32(cv2.perspectiveTransform(points.reshape(1, -1, 2), H).reshape(-1, 2) + add)
 
 
+def flatmap(func, *iterable):
+    return map(func, chain(*chain(*iterable)))
+
+
 def flatmap2(func, *iterable):
     return map(func, chain(*chain(*chain(*iterable))))
+
+
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return zip_longest(*args, fillvalue=fillvalue)
