@@ -77,26 +77,16 @@ class FernDetector:
         self._ferns = ferns
         self._fern_p = ferns_p
         self._classes_count = classes_cnt
-        self._S = fern_bits
+        self._fern_bits = fern_bits
         self.key_points = key_points
 
-    def _init_ferns(self, fern_est_size=11):
-        kp_pairs = list(util.generate_key_point_pairs(self._patch_size))
-        n = len(kp_pairs)
+    def _init_ferns(self, fern_bits=11, fern_count=30):
+        kp_pairs = list(util.generate_key_point_pairs(self._patch_size, n=fern_bits*fern_count))
 
         # maps key_point[i] to fern[fern_indices[i]]
         fern_indices = []
-
-        # generate n // fern_est_size Ferns
-        num_ferns = n // fern_est_size
-        for fern_index in range(num_ferns):
-            fern_indices += [fern_index] * fern_est_size
-
-        self._S = fern_est_size
-        # increase last fern size if needed
-        if len(fern_indices) < n:
-            self._S += n - len(fern_indices)
-            fern_indices += [num_ferns - 1] * (n - len(fern_indices))
+        for fern_index in range(fern_count):
+            fern_indices += [fern_index] * fern_bits
 
         random.shuffle(fern_indices)
 
@@ -123,7 +113,7 @@ class FernDetector:
 
         self._classes_count = len(corners)
 
-        K = 2 ** (self._S + 1)
+        K = 2 ** (self._fern_bits + 1)
         self._fern_p = np.zeros((len(self._ferns), self._classes_count, K))
         self.key_points = []
 
@@ -289,7 +279,7 @@ class FernDetector:
 
         F, C, K = np.shape(self._fern_p)
 
-        file.write("{},{},{}\n".format(self._S, self._max_train_corners, self._max_match_corners))
+        file.write("{},{},{}\n".format(self._fern_bits, self._max_train_corners, self._max_match_corners))
         file.write("{},{},{}\n".format(F, C, K))
 
         for f in range(F):
