@@ -81,6 +81,7 @@ class FernDetector:
         self.key_points = key_points
 
     def _init_ferns(self, fern_bits=11, fern_count=30):
+        self._fern_bits = fern_bits
         kp_pairs = list(util.generate_key_point_pairs(self._patch_size, n=fern_bits*fern_count))
 
         # maps key_point[i] to fern[fern_indices[i]]
