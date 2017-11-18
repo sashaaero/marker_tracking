@@ -83,7 +83,7 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
 if __name__ == "__main__":
     random.seed(1234)
-    # benchmark_sample()
-    benchmark_sample(deserialize=True)
+    benchmark_sample()
+    # benchmark_sample(deserialize=True)
     # benchmark_dataset("ClifBar")
     # benchmark_dataset("Box")

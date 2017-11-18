@@ -80,6 +80,8 @@ class FernDetector:
         self._fern_bits = fern_bits
         self.key_points = key_points
 
+    _K = property(lambda self: 2 ** (self._fern_bits + 1))
+
     def _init_ferns(self, fern_bits=11, fern_count=30):
         self._fern_bits = fern_bits
         kp_pairs = list(util.generate_key_point_pairs(self._patch_size, n=fern_bits*fern_count))
@@ -114,8 +116,7 @@ class FernDetector:
 
         self._classes_count = len(corners)
 
-        K = 2 ** (self._fern_bits + 1)
-        self._fern_p = np.zeros((len(self._ferns), self._classes_count, K))
+        self._fern_p = np.zeros((len(self._ferns), self._classes_count, self._K))
         self.key_points = []
 
         title = "Training {} classes".format(self._classes_count)
@@ -131,7 +132,7 @@ class FernDetector:
             for patch in patch_class:
                 for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
-                    assert 0 <= k < K, "WTF!!!"
+                    assert 0 <= k < self._K, "WTF!!!"
                     self._fern_p[fern_idx, class_idx, k] += 1
 
         Nr = 1
@@ -140,7 +141,7 @@ class FernDetector:
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, cls_idx, :])
                 self._fern_p[fern_idx, cls_idx, :] += Nr
-                self._fern_p[fern_idx, cls_idx, :] /= (Nc + K * Nr)
+                self._fern_p[fern_idx, cls_idx, :] /= (Nc + self._K * Nr)
 
                 print("P_min={}, P_max={}"
                       .format(np.min(self._fern_p[fern_idx, cls_idx, :]),
