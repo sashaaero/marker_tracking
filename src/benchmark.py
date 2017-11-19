@@ -12,8 +12,6 @@ def benchmark_dataset(dataset, explore=True):
     sample = util.get_sample(dataset)
 
     detector = fern.FernDetector(sample, max_train_corners=20, max_match_corners=500)
-    detector.draw_learned_ferns()
-    # detector.draw_learned_ferns_2("img/learn/")
 
     img = sample.copy()
     detection_box, _ = detector.detect(img)
@@ -42,8 +40,6 @@ def benchmark_sample(deserialize=False):
     else:
         with open(serialization_path, 'r') as f:
             detector = fern.FernDetector.deserialize(f)
-
-    detector.draw_learned_ferns()
 
     detection_box, _ = detector.detect(sample)
     if len(detection_box) == 0:
@@ -83,7 +79,7 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
 if __name__ == "__main__":
     random.seed(1234)
-    benchmark_sample()
-    # benchmark_sample(deserialize=True)
+    # benchmark_sample()
+    benchmark_sample(deserialize=True)
     # benchmark_dataset("ClifBar")
     # benchmark_dataset("Box")

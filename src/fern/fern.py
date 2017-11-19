@@ -214,44 +214,6 @@ class FernDetector:
 
         cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
 
-    def draw_learned_ferns(self):
-        w, h = self._patch_size
-        ferns_count = len(self._ferns)
-
-        _, K, _ = self._fern_p.shape
-
-        mask = np.zeros((h, w), np.uint8)
-        for fern in self._ferns:
-            for (y1, x1), (y2, x2) in fern.kp_pairs:
-                mask[y1, x1] = 255
-                mask[y2, x2] = 255
-
-        mask = 255 - mask
-
-        for cls_idx in util.iter_timer(range(self._classes_count), title="Drawing ferns"):
-            img = np.zeros(((1 + (ferns_count // 10)) * (h + 5), (w + 5) * 10)) * 128
-
-            for fern_idx, fern in enumerate(self._ferns):
-                x0 = (fern_idx % 10) * (w + 5)
-                y0 = (fern_idx // 10) * (h + 5)
-
-                k = np.argmax(self._fern_p[fern_idx, :, cls_idx])
-
-                sample = np.ones((h, w), np.uint8) * 128
-                fern.draw(k, sample)
-
-                # mask = sample.copy()
-                # # invert
-                # mask = mask + 128
-                # _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY_INV)
-
-                img[y0:y0 + h, x0: x0 + w] = sample  # cv2.inpaint(sample, mask, 2, cv2.INPAINT_TELEA)
-
-                # for k in range(K):
-                #     p = self._fern_p[fern_idx, k, cls_idx]
-
-            cv2.imwrite("img/learn/cls{}.png".format(cls_idx), img)
-
     def draw_learned_ferns_2(self, path=""):
         print("Drawing grphics..")
         ferns_count, K, _ = self._fern_p.shape
