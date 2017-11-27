@@ -112,7 +112,7 @@ class FernDetector:
             cv2.circle(img1, (x, y), 3, util.COLOR_WHITE, -1)
 
         cv2.imshow("corners", img1)
-        util.wait_for_key()
+        cv2.waitKey(1)
 
         self._classes_count = len(corners)
 

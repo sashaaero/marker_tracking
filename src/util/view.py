@@ -186,5 +186,16 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
     return vis
 
 
-def draw_match_bounds(img, H):
-    pass
+def examine_detection(detector, sample, img, truth_box, detection_box, explore=True):
+    img2 = img.copy()
+    util.draw_poly(img2, truth_box, color=util.COLOR_WHITE)
+    util.draw_poly(img2, detection_box, color=util.COLOR_RED)
+
+    cv2.imshow("step", img2)
+
+    if explore:
+        kp_t, kp_m, kp_p = detector.match(img)
+        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 5.0)
+        explore_match_mouse(sample, img, kp_t, kp_m, H=H, status=status)
+
+    util.wait_for_key()
