@@ -8,19 +8,22 @@ import numpy as np
 import util
 
 
-logger = logging.getLogger("benchmark")
+logger = logging.getLogger("app")
 logger.setLevel(logging.DEBUG)
+
 fh = logging.FileHandler(datetime.now().strftime("log/bench_%Y-%m-%d_%H-%M-%S.log"))
 fh.setLevel(logging.DEBUG)
+fh.setFormatter(logging.Formatter('%(asctime)s %(name)-25s %(levelname)-8s %(message)s'))
+
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(asctime)s %(name)s.%(levelname)s: %(message)s')
-fh.setFormatter(formatter)
-ch.setFormatter(formatter)
+ch.setFormatter(logging.Formatter('%(name)-25s %(levelname)-8s %(message)s'))
 
 logger.addHandler(fh)
 logger.addHandler(ch)
+
+# now we have proper logger
+logger = logging.getLogger("app.benchmark")
 
 
 def calc_metric(orig, points):

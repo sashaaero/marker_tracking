@@ -1,4 +1,5 @@
 import cv2
+import logging
 import numpy as np
 
 
@@ -16,18 +17,19 @@ class Timer:
     def __init__(self, name, auto_print=True):
         self.name = name
         self._auto_print = auto_print
+        self.logger = logging.getLogger("app.timers.Timer")
 
     def __enter__(self):
         self._start = clock()
         if self.total is None:
             self.total = 0
             if self._auto_print:
-                print("{}... ".format(self.name))
+                self.logger.info("Started timer on {}... ".format(self.name))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.total += clock() - self._start
         if self._auto_print:
-            print("{}... {} ms".format(self.name, self))
+            self.logger.info("{} complete in {} ms ".format(self.name, self))
 
     def __str__(self):
         return "{:.2f}".format(self.total * 1000)
@@ -35,13 +37,13 @@ class Timer:
 
 def iter_timer(seq, title=None, print_iterations=True, print_every=1):
     """ Measures and prints total execution time, time of each iteration and some statistics"""
-    def print_iter(idx, time):
-        print("iteration {:3}, time: {:.3} s".format(idx, time))
+    logger = logging.getLogger("app.timers")
 
-    # empty line, just prettifying the output
-    print()
+    def print_iter(idx, time):
+        logger.debug(" iter {:3}, time: {:.3} s".format(idx, time))
+
     if title is not None:
-        print(title)
+        logger.info("Started timer on iterative {}".format(title))
 
     prev_time = None
     times = []
@@ -77,12 +79,11 @@ def iter_timer(seq, title=None, print_iterations=True, print_every=1):
     M          = np.max(times)
     m          = np.min(times)
 
-    print("Performed total of {} iterations, total time = {:.3f} s\n"
-          " min = {:.3f} s\n"
-          " avg = {:.3f} s\n"
-          " med = {:.3f} s\n"
-          " max = {:.3f} s\n"
-          " sd  = {:.3f}"
-          .format(total_iterations, total_time, m, avg, median, M, sd))
+    logger.info("Performed {} iterations in {:.3f} s".format(total_iterations, total_time))
+    logger.debug("..max = {:.3f} s".format(M))
+    logger.debug("..avg = {:.3f} s".format(avg))
+    logger.debug("..med = {:.3f} s".format(median))
+    logger.debug("..min = {:.3f} s".format(m))
+    logger.debug("..sd  = {:.3f} s".format(sd))
 
     return

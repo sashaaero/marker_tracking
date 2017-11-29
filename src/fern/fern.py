@@ -10,7 +10,7 @@ import util
 from collections import defaultdict
 
 
-module_logger = logging.getLogger("fern")
+module_logger = logging.getLogger("app.fern")
 
 
 class Fern:
@@ -58,12 +58,13 @@ class Fern:
 class FernDetector:
     @staticmethod
     def train(sample, patch_size=(16, 16), max_train_corners=40, max_match_corners=200):
+        module_logger.info("Training FernDetector")
         fd = FernDetector(patch_size=patch_size,
                           max_train_corners=max_train_corners,
                           max_match_corners=max_match_corners)
         fd._init_ferns()
         fd._train(sample)
-
+        module_logger.info("FernDetector trained")
         return fd
 
     def __init__(self,
@@ -83,7 +84,7 @@ class FernDetector:
         self._classes_count = classes_cnt
         self._fern_bits = fern_bits
         self.key_points = key_points
-        self.logger = logging.getLogger("fern.FernDetector")
+        self.logger = logging.getLogger("app.fern.FernDetector")
 
     _K = property(lambda self: 2 ** (self._fern_bits + 1))
 
