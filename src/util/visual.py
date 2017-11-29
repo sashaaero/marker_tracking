@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import operator
 from util import iter_timer, flip_points, mult, Timer, wait_for_key
 
 
@@ -164,3 +163,13 @@ def generate_key_point_pairs(patch_size, n=300):
 
     for x0, y0, x1, y1 in zip(xs0, ys0, xs1, ys1):
         yield (y0, x0), (y1, x1)
+
+
+def get_frames(video):
+    while True:
+        frame_captured, frame = video.read()
+
+        if not frame_captured:
+            return
+
+        yield frame
