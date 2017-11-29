@@ -3,3 +3,4 @@ img/
 /datasets/
 .idea/
 *.iml
+*.log
