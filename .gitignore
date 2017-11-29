@@ -3,4 +3,4 @@ img/
 /datasets/
 .idea/
 *.iml
-/benchmark/log/
+log/

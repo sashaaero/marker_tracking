@@ -10,7 +10,7 @@ import util
 
 logger = logging.getLogger("benchmark")
 logger.setLevel(logging.DEBUG)
-fh = logging.FileHandler(datetime.now().strftime("bench_%Y-%m-%d_%H-%M-%S.log"))
+fh = logging.FileHandler(datetime.now().strftime("log/bench_%Y-%m-%d_%H-%M-%S.log"))
 fh.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
