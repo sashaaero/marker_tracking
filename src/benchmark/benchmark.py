@@ -4,14 +4,16 @@ from typing import TextIO
 import cv2
 import fern
 import logging
+import matplotlib.pyplot as plt
 import numpy as np
 import util
 
+START_TIME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 logger = logging.getLogger("app")
 logger.setLevel(logging.DEBUG)
 
-fh = logging.FileHandler(datetime.now().strftime("log/bench_%Y-%m-%d_%H-%M-%S.log"))
+fh = logging.FileHandler("log/bench_{}.log".format(START_TIME))
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(logging.Formatter('%(asctime)s %(name)-25s %(levelname)-8s %(message)s'))
 
@@ -86,6 +88,19 @@ def train_detector(video, gt_points: TextIO):
     return detector
 
 
+def plot_result(result):
+    def count(t):
+        return len(list(filter(lambda x: x <= t, result))) / len(result)
+
+    X = list(range(1000))
+    precision = [count(threshold) for threshold in X]
+
+    plt.plot(X, precision)
+    plt.xlabel("Alignment error threshold")
+    plt.ylabel("Precision")
+    plt.savefig("log/plot_{}.png".format(START_TIME))
+
+
 if __name__ == "__main__":
     logger.info("Benchmark started")
 
@@ -112,3 +127,6 @@ if __name__ == "__main__":
 
         logger.info("Printing result")
         logger.info(result)
+
+        logger.info("Plotting result")
+        plot_result(result)

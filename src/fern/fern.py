@@ -162,13 +162,12 @@ class FernDetector:
         self.logger.info("Training complete")
 
     def match(self, image):
-        self.logger.info("Matching image")
         dims = len(np.shape(image))
         if dims == 3:
-            self.logger.info("Converting image to GRAY")
+            self.logger.info("Converting image to GRAY before matching")
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        with util.Timer("track features"):
+        with util.Timer("extract corners"):
             corners = util.get_corners(image, self._max_match_corners)
 
         image = cv2.GaussianBlur(image, (7, 7), 25)
@@ -192,7 +191,6 @@ class FernDetector:
             key_points_matched.append(corner)
             key_points_pairs.append((best_key_point, corner))
 
-        self.logger.info("Done matching")
         return util.flip_points(key_points_trained), \
                util.flip_points(key_points_matched), \
                key_points_pairs
