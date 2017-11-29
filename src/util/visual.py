@@ -1,6 +1,10 @@
+from util import iter_timer, flip_points, mult, Timer
+
 import cv2
+import logging
 import numpy as np
-from util import iter_timer, flip_points, mult, Timer, wait_for_key
+
+logger = logging.getLogger("app.visual")
 
 
 def get_corners(img, max_corners):
@@ -9,15 +13,14 @@ def get_corners(img, max_corners):
 
 
 def get_stable_corners(train_img, max_corners=100):
+    logger.debug("Generating {} stable corners".format(max_corners))
     H, W = np.shape(train_img)[:2]
 
     CORNER_CNT = 500
 
     corners = list(get_corners(train_img, CORNER_CNT))
 
-    cv2.imshow("original", train_img)
-
-    with Timer("Corner generation"):
+    with Timer("Generating deformed images and collect corers"):
         for R_inv, img in generate_deformations(train_img, theta_step=36, deformations=3):
             new_corners = np.array(list(get_corners(img, CORNER_CNT)), dtype=np.float32)
 
@@ -25,11 +28,8 @@ def get_stable_corners(train_img, max_corners=100):
             new_corners = flip_points(new_corners)
 
             t = [[1]] * len(new_corners)
-
             new_corners = np.transpose(np.hstack((new_corners, t)))
-
-            corners_inv = np.transpose(np.dot(R_inv, new_corners)) #cv2.transform(new_corners, R_inv)
-            # corners_inv = flip_points(corners_inv)
+            corners_inv = np.transpose(np.dot(R_inv, new_corners))
 
             corners.extend(corners_inv)
 
@@ -50,15 +50,14 @@ def get_stable_corners(train_img, max_corners=100):
                 return idx
 
             # collectors are sorted by x
-            # if xdist > threshold then for all remaining collectors dist2 > threshold
+            # when xdist > threshold then for all remaining collectors dist2 > threshold
             if xdist > threshold:
                 break
 
         return None
 
     skip_count = 0
-
-    for cx, cy in iter_timer(corners, "Stable corner detection", print_iterations=False):
+    for cx, cy in iter_timer(corners, "Detect stable corners", print_iterations=False):
         if not (0 <= cy < H and 0 <= cx < W):
             skip_count += 1
             continue
@@ -72,8 +71,7 @@ def get_stable_corners(train_img, max_corners=100):
 
     collectors = sorted(collectors, key=lambda c: -c[2])
 
-    print("Skipped {}".format(skip_count))
-
+    logger.debug("Corners generated. Start yielding".format(max_corners))
     for x, y, _ in collectors[:max_corners]:
         yield int(y), int(x)
 
