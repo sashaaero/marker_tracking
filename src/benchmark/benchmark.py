@@ -1,10 +1,26 @@
+from datetime import datetime
 from typing import TextIO
 
 import cv2
-
 import fern
-import util
+import logging
 import numpy as np
+import util
+
+
+logger = logging.getLogger("benchmark")
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler(datetime.now().strftime("bench_%Y-%m-%d_%H-%M-%S.log"))
+fh.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s %(name)s.%(levelname)s: %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+
+logger.addHandler(fh)
+logger.addHandler(ch)
 
 
 def calc_metric(orig, points):
@@ -26,52 +42,61 @@ def benchmark_dataset(detector,
                       frame_flags: TextIO,
                       gt_homography: TextIO,
                       gt_points: TextIO):
-    # drop the first line of data
+    logger.debug("Benchmarking dataset")
+    logger.debug("Drop first line of data")
     next(frame_flags), next(gt_homography), next(gt_points)
 
+    logger.debug("Start iterating over frames")
     result = []
     for idx, (frame, flag, Hline, Pline) in \
             enumerate(zip(util.get_frames(video), frame_flags, gt_homography, gt_points)):
-
+        logger.debug("Evaluating frame {}".format(idx))
         x1, y1, x2, y2, x3, y3, x4, y4 = list(map(float, Pline.strip().split()))
         flag = int(flag.strip())
-        print("{}, ".format(idx), end="")
 
         if idx % 2 == 1 or flag > 0:
-            print("dropped")
+            logger.debug("Frame {} dropped".format(idx))
             continue
 
         points, H = detector.detect(frame)
         metric = calc_metric([(x1, y1), (x2, y2), (x3, y3), (x4, y4)], points)
 
-        print("m = {}".format(metric))
-
+        logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)
 
+    logger.debug("Benchmarking dataset done")
     return result
 
 
 def train_detector(video, gt_points: TextIO):
+    logger.info("Start detector training")
     frame = next(util.get_frames(video))
-    gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
 
+    gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
     sample_corners = np.array([[0, 0], [640, 0], [640, 480], [0, 480]], dtype=np.float32)
 
     H, _ = cv2.findHomography(gt_points, sample_corners, cv2.RANSAC, 5.0)
     sample = cv2.warpPerspective(frame, H, (640, 480))
 
-    return fern.FernDetector.train(sample, max_train_corners=20, max_match_corners=500)
+    detector = fern.FernDetector.train(sample, max_train_corners=20, max_match_corners=500)
+    logger.info("Detector trained")
+    return detector
 
 
 if __name__ == "__main__":
+    logger.info("Benchmark started")
+
+    logger.debug("Open files V01_1_flag.txt, V01_1_gt_homography.txt, V01_1_gt_points.txt")
     with open("../../datasets/annotation/V01_1_flag.txt", 'r') as flag, \
          open("../../datasets/annotation/V01_1_gt_homography.txt", 'r') as homography, \
          open("../../datasets/annotation/V01_1_gt_points.txt", 'r') as points:
 
+        logger.debug("Open V01_1.avi")
         video = cv2.VideoCapture("../../datasets/V01/V01_1.avi")
+
         detector = train_detector(video, points)
 
-        # reset video an points file positions
+        logger.debug("Reset video an points file positions to start")
         video.set(cv2.CAP_PROP_POS_FRAMES, 0)
         points.seek(0)
 
@@ -82,4 +107,5 @@ if __name__ == "__main__":
             gt_homography=homography,
             gt_points=points)
 
-        print(result)
+        logger.info("Printing result")
+        logger.info(result)
